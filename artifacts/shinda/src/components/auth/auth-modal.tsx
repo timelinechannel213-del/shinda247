@@ -3,77 +3,59 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
+import { Eye, EyeOff } from 'lucide-react';
 
-type Step = 'phone' | 'otp-register' | 'otp-login' | 'username';
+type Mode = 'login' | 'register';
 
 export function AuthModal() {
   const { login }   = useAuth();
   const { toast }   = useToast();
-  const [step, setStep]         = useState<Step>('phone');
-  const [mode, setMode]         = useState<'login' | 'register'>('login');
-  const [phone, setPhone]       = useState('');
-  const [otp, setOtp]           = useState('');
-  const [username, setUsername] = useState('');
-  const [loading, setLoading]   = useState(false);
+  const [mode, setMode]           = useState<Mode>('login');
+  const [phone, setPhone]         = useState('');
+  const [password, setPassword]   = useState('');
+  const [username, setUsername]   = useState('');
+  const [showPass, setShowPass]   = useState(false);
+  const [loading, setLoading]     = useState(false);
 
-  const handleRequestOtp = async () => {
-    if (!phone.trim()) { toast({ title: 'Enter your phone number', variant: 'destructive' }); return; }
+  const handleSubmit = async () => {
+    if (!phone.trim() || !password.trim()) {
+      toast({ title: 'Enter phone and password', variant: 'destructive' }); return;
+    }
+    if (mode === 'register' && !username.trim()) {
+      toast({ title: 'Enter a username', variant: 'destructive' }); return;
+    }
+
     setLoading(true);
     try {
-      const res  = await fetch('/api/auth/request-otp', {
-        method: 'POST',
+      const endpoint = mode === 'login' ? '/api/auth/login' : '/api/auth/register';
+      const body     = mode === 'login'
+        ? { phone, password }
+        : { phone, password, username };
+
+      const res  = await fetch(endpoint, {
+        method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone }),
+        body:    JSON.stringify(body),
       });
       const data = await res.json();
-      if (!res.ok) { toast({ title: data.error, variant: 'destructive' }); return; }
-      toast({ title: 'OTP sent!', description: 'Check your phone (dev: check server logs)' });
-      setStep(mode === 'register' ? 'otp-register' : 'otp-login');
+
+      if (!res.ok) {
+        toast({ title: data.error ?? 'Something went wrong', variant: 'destructive' });
+        return;
+      }
+
+      login(data.token, data.userId, data.username);
     } catch {
-      toast({ title: 'Network error', variant: 'destructive' });
+      toast({ title: 'Network error. Please try again.', variant: 'destructive' });
     } finally {
       setLoading(false);
     }
   };
 
-  const handleLogin = async () => {
-    if (!otp.trim()) { toast({ title: 'Enter the OTP', variant: 'destructive' }); return; }
-    setLoading(true);
-    try {
-      const res  = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, otp }),
-      });
-      const data = await res.json();
-      if (!res.ok) { toast({ title: data.error, variant: 'destructive' }); return; }
-      login(data.token, data.userId, data.username);
-    } catch {
-      toast({ title: 'Network error', variant: 'destructive' });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleRegister = async () => {
-    if (!otp.trim() || !username.trim()) {
-      toast({ title: 'Fill in all fields', variant: 'destructive' }); return;
-    }
-    setLoading(true);
-    try {
-      const res  = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, otp, username }),
-      });
-      const data = await res.json();
-      if (!res.ok) { toast({ title: data.error, variant: 'destructive' }); return; }
-      login(data.token, data.userId, data.username);
-    } catch {
-      toast({ title: 'Network error', variant: 'destructive' });
-    } finally {
-      setLoading(false);
-    }
+  const switchMode = (m: Mode) => {
+    setMode(m);
+    setPassword('');
+    setUsername('');
   };
 
   return (
@@ -86,117 +68,87 @@ export function AuthModal() {
           <p className="text-sm text-muted-foreground mt-1">Real-time crash game</p>
         </div>
 
-        {step === 'phone' && (
-          <div className="space-y-4">
-            <div className="flex gap-2 rounded-lg border border-border/50 p-1">
-              <button
-                onClick={() => setMode('login')}
-                className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${mode === 'login' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-              >
-                Login
-              </button>
-              <button
-                onClick={() => setMode('register')}
-                className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${mode === 'register' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-              >
-                Register
-              </button>
-            </div>
-
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                Phone Number
-              </label>
-              <Input
-                placeholder="254712345678"
-                value={phone}
-                onChange={e => setPhone(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleRequestOtp()}
-                className="h-12 text-base"
-              />
-              <p className="text-xs text-muted-foreground">Format: 254XXXXXXXXX</p>
-            </div>
-
-            <Button
-              className="w-full h-12 text-base"
-              onClick={handleRequestOtp}
-              disabled={loading}
-            >
-              {loading ? 'Sending...' : 'Get OTP Code'}
-            </Button>
-          </div>
-        )}
-
-        {step === 'otp-login' && (
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                OTP Code
-              </label>
-              <Input
-                placeholder="123456"
-                maxLength={6}
-                value={otp}
-                onChange={e => setOtp(e.target.value.replace(/\D/g, ''))}
-                onKeyDown={e => e.key === 'Enter' && handleLogin()}
-                className="h-12 text-2xl text-center tracking-widest"
-              />
-              <p className="text-xs text-muted-foreground">Sent to {phone}</p>
-            </div>
-
-            <Button className="w-full h-12 text-base" onClick={handleLogin} disabled={loading}>
-              {loading ? 'Logging in...' : 'Login'}
-            </Button>
-
+        <div className="flex gap-2 rounded-lg border border-border/50 p-1 mb-6">
+          {(['login', 'register'] as Mode[]).map(m => (
             <button
-              onClick={() => setStep('phone')}
-              className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors"
+              key={m}
+              onClick={() => switchMode(m)}
+              className={`flex-1 py-2 rounded-md text-sm font-medium capitalize transition-colors ${
+                mode === m
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
             >
-              ← Back
+              {m === 'login' ? 'Login' : 'Register'}
             </button>
+          ))}
+        </div>
+
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+              Phone Number
+            </label>
+            <Input
+              placeholder="254712345678"
+              value={phone}
+              onChange={e => setPhone(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSubmit()}
+              className="h-12 text-base"
+              type="tel"
+            />
+            <p className="text-xs text-muted-foreground">Format: 254XXXXXXXXX</p>
           </div>
-        )}
 
-        {step === 'otp-register' && (
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                OTP Code
-              </label>
-              <Input
-                placeholder="123456"
-                maxLength={6}
-                value={otp}
-                onChange={e => setOtp(e.target.value.replace(/\D/g, ''))}
-                className="h-12 text-2xl text-center tracking-widest"
-              />
-            </div>
-
+          {mode === 'register' && (
             <div className="space-y-2">
               <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
                 Username
               </label>
               <Input
-                placeholder="JohnDoe"
+                placeholder="JohnDoe123"
                 value={username}
                 onChange={e => setUsername(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleRegister()}
+                onKeyDown={e => e.key === 'Enter' && handleSubmit()}
                 className="h-12 text-base"
+                maxLength={32}
               />
             </div>
+          )}
 
-            <Button className="w-full h-12 text-base" onClick={handleRegister} disabled={loading}>
-              {loading ? 'Creating Account...' : 'Create Account'}
-            </Button>
-
-            <button
-              onClick={() => setStep('phone')}
-              className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors"
-            >
-              ← Back
-            </button>
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+              Password
+            </label>
+            <div className="relative">
+              <Input
+                placeholder={mode === 'register' ? 'Min 6 characters' : 'Your password'}
+                type={showPass ? 'text' : 'password'}
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleSubmit()}
+                className="h-12 text-base pr-12"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPass(s => !s)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {showPass ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+              </button>
+            </div>
           </div>
-        )}
+
+          <Button
+            className="w-full h-12 text-base mt-2"
+            onClick={handleSubmit}
+            disabled={loading}
+          >
+            {loading
+              ? (mode === 'login' ? 'Logging in...' : 'Creating Account...')
+              : (mode === 'login' ? 'Login' : 'Create Account')}
+          </Button>
+        </div>
       </div>
     </div>
   );

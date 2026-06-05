@@ -113,7 +113,7 @@ async function openBetting(gameId: number, hash: string): Promise<void> {
     .set({ state: 'betting', bettingOpenAt: new Date() })
     .where(eq(games.id, gameId));
 
-  broadcast('betting_open', { gameId });
+  broadcast('betting_open', { gameId, bettingDurationMs: 5000 });
   setTimeout(() => closeBetting(gameId, hash), 5000);
 }
 

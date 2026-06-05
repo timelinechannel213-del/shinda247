@@ -25,11 +25,11 @@ var __export = (target, all) => {
   for (var name in all)
     __defProp(target, name, { get: all[name], enumerable: true });
 };
-var __copyProps = (to, from, except2, desc2) => {
+var __copyProps = (to, from, except2, desc3) => {
   if (from && typeof from === "object" || typeof from === "function") {
     for (let key of __getOwnPropNames(from))
       if (!__hasOwnProp.call(to, key) && key !== except2)
-        __defProp(to, key, { get: () => from[key], enumerable: !(desc2 = __getOwnPropDesc(from, key)) || desc2.enumerable });
+        __defProp(to, key, { get: () => from[key], enumerable: !(desc3 = __getOwnPropDesc(from, key)) || desc3.enumerable });
   }
   return to;
 };
@@ -1351,10 +1351,10 @@ var require_http_errors = __commonJS({
       return ServerError;
     }
     function nameFunc(func, name) {
-      var desc2 = Object.getOwnPropertyDescriptor(func, "name");
-      if (desc2 && desc2.configurable) {
-        desc2.value = name;
-        Object.defineProperty(func, "name", desc2);
+      var desc3 = Object.getOwnPropertyDescriptor(func, "name");
+      if (desc3 && desc3.configurable) {
+        desc3.value = name;
+        Object.defineProperty(func, "name", desc3);
       }
     }
     function populateConstructorExports(exports2, codes, HttpError) {
@@ -16799,14 +16799,14 @@ var require_get = __commonJS({
         throw e;
       }
     }
-    var desc2 = !!hasProtoAccessor && gOPD && gOPD(
+    var desc3 = !!hasProtoAccessor && gOPD && gOPD(
       Object.prototype,
       /** @type {keyof typeof Object.prototype} */
       "__proto__"
     );
     var $Object = Object;
     var $getPrototypeOf = $Object.getPrototypeOf;
-    module.exports = desc2 && typeof desc2.get === "function" ? callBind([desc2.get]) : typeof $getPrototypeOf === "function" ? (
+    module.exports = desc3 && typeof desc3.get === "function" ? callBind([desc3.get]) : typeof $getPrototypeOf === "function" ? (
       /** @type {import('./get')} */
       function getDunder(value) {
         return $getPrototypeOf(value == null ? value : $Object(value));
@@ -17156,10 +17156,10 @@ var require_get_intrinsic = __commonJS({
             return void undefined2;
           }
           if ($gOPD && i + 1 >= parts.length) {
-            var desc2 = $gOPD(value, part);
-            isOwn = !!desc2;
-            if (isOwn && "get" in desc2 && !("originalValue" in desc2.get)) {
-              value = desc2.get;
+            var desc3 = $gOPD(value, part);
+            isOwn = !!desc3;
+            if (isOwn && "get" in desc3 && !("originalValue" in desc3.get)) {
+              value = desc3.get;
             } else {
               value = value[part];
             }
@@ -30367,12 +30367,12 @@ var require_result = __commonJS({
         }
         const row = {};
         for (let i = 0; i < fieldDescriptions.length; i++) {
-          const desc2 = fieldDescriptions[i];
-          row[desc2.name] = null;
+          const desc3 = fieldDescriptions[i];
+          row[desc3.name] = null;
           if (this._types) {
-            this._parsers[i] = this._types.getTypeParser(desc2.dataTypeID, desc2.format || "text");
+            this._parsers[i] = this._types.getTypeParser(desc3.dataTypeID, desc3.format || "text");
           } else {
-            this._parsers[i] = types3.getTypeParser(desc2.dataTypeID, desc2.format || "text");
+            this._parsers[i] = types3.getTypeParser(desc3.dataTypeID, desc3.format || "text");
           }
         }
         this._prebuiltEmptyResultObject = { ...row };
@@ -35698,7 +35698,7 @@ var require_websocket = __commonJS({
     var http2 = __require("http");
     var net = __require("net");
     var tls = __require("tls");
-    var { randomBytes: randomBytes3, createHash: createHash2 } = __require("crypto");
+    var { randomBytes: randomBytes3, createHash: createHash3 } = __require("crypto");
     var { Duplex, Readable } = __require("stream");
     var { URL: URL2 } = __require("url");
     var PerMessageDeflate2 = require_permessage_deflate();
@@ -36358,7 +36358,7 @@ var require_websocket = __commonJS({
           abortHandshake(websocket, socket, "Invalid Upgrade header");
           return;
         }
-        const digest = createHash2("sha1").update(key + GUID).digest("base64");
+        const digest = createHash3("sha1").update(key + GUID).digest("base64");
         if (res.headers["sec-websocket-accept"] !== digest) {
           abortHandshake(websocket, socket, "Invalid Sec-WebSocket-Accept header");
           return;
@@ -36725,7 +36725,7 @@ var require_websocket_server = __commonJS({
     var EventEmitter = __require("events");
     var http2 = __require("http");
     var { Duplex } = __require("stream");
-    var { createHash: createHash2 } = __require("crypto");
+    var { createHash: createHash3 } = __require("crypto");
     var extension2 = require_extension();
     var PerMessageDeflate2 = require_permessage_deflate();
     var subprotocol2 = require_subprotocol();
@@ -37026,7 +37026,7 @@ var require_websocket_server = __commonJS({
           );
         }
         if (this._state > RUNNING) return abortHandshake(socket, 503);
-        const digest = createHash2("sha1").update(key + GUID).digest("base64");
+        const digest = createHash3("sha1").update(key + GUID).digest("base64");
         const headers = [
           "HTTP/1.1 101 Switching Protocols",
           "Upgrade: websocket",
@@ -41088,7 +41088,7 @@ var health_default = router;
 
 // src/routes/auth.ts
 var import_express2 = __toESM(require_express2(), 1);
-import { randomBytes as randomBytes2 } from "crypto";
+import { createHash as createHash2, randomBytes as randomBytes2 } from "crypto";
 
 // ../../node_modules/.pnpm/pg@8.20.0/node_modules/pg/esm/index.mjs
 var import_lib = __toESM(require_lib5(), 1);
@@ -59650,14 +59650,18 @@ var otpCodes = pgTable("otp_codes", {
   expiresAt: timestamp("expires_at").notNull(),
   usedAt: timestamp("used_at"),
   createdAt: timestamp("created_at").notNull().defaultNow()
-});
+}, (table) => ({
+  expiresAtIdx: index("otp_expires_at_idx").on(table.expiresAt)
+}));
 var sessions = pgTable("sessions", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   token: varchar("token", { length: 512 }).notNull().unique(),
   expiresAt: timestamp("expires_at").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow()
-});
+}, (table) => ({
+  expiresAtIdx: index("sessions_expires_at_idx").on(table.expiresAt)
+}));
 var insertUserSchema = createInsertSchema(users);
 var selectUserSchema = createSelectSchema(users);
 var insertOtpSchema = createInsertSchema(otpCodes);
@@ -60005,7 +60009,7 @@ async function openBetting(gameId, hash) {
   if (!currentGame || currentGame.id !== gameId) return;
   currentGame.state = "betting";
   await db.update(games).set({ state: "betting", bettingOpenAt: /* @__PURE__ */ new Date() }).where(eq(games.id, gameId));
-  broadcast("betting_open", { gameId });
+  broadcast("betting_open", { gameId, bettingDurationMs: 5e3 });
   setTimeout(() => closeBetting(gameId, hash), 5e3);
 }
 async function closeBetting(gameId, hash) {
@@ -60155,6 +60159,16 @@ async function recoverInterruptedGame(gameId) {
   await db.update(games).set({ state: "crashed", forced: true }).where(eq(games.id, gameId));
 }
 
+// ../../lib/db/src/services/cleanup.service.ts
+async function cleanupExpiredSessions() {
+  const deleted = await db.delete(sessions).where(lt(sessions.expiresAt, /* @__PURE__ */ new Date())).returning({ id: sessions.id });
+  return deleted.length;
+}
+async function cleanupExpiredOtps() {
+  const deleted = await db.delete(otpCodes).where(lt(otpCodes.expiresAt, /* @__PURE__ */ new Date())).returning({ id: otpCodes.id });
+  return deleted.length;
+}
+
 // src/lib/logger.ts
 var import_pino = __toESM(require_pino(), 1);
 var isProduction = process.env.NODE_ENV === "production";
@@ -60172,168 +60186,6 @@ var logger = (0, import_pino.default)({
     }
   }
 });
-
-// src/routes/auth.ts
-var router2 = (0, import_express2.Router)();
-function generateOtp() {
-  return String(Math.floor(1e5 + Math.random() * 9e5));
-}
-function generateToken() {
-  return randomBytes2(48).toString("hex");
-}
-function normalizePhone(raw) {
-  const digits = raw.replace(/\D/g, "");
-  if (digits.startsWith("0") && digits.length === 10) return "254" + digits.slice(1);
-  if (digits.startsWith("254") && digits.length === 12) return digits;
-  if (digits.startsWith("7") && digits.length === 9) return "254" + digits;
-  return digits;
-}
-router2.post("/auth/request-otp", async (req, res) => {
-  const { phone } = req.body;
-  if (!phone) {
-    res.status(400).json({ error: "phone is required" });
-    return;
-  }
-  const normalized = normalizePhone(phone);
-  if (normalized.length !== 12) {
-    res.status(400).json({ error: "Invalid phone number. Use format: 254XXXXXXXXX" });
-    return;
-  }
-  const code = generateOtp();
-  const expiresAt = new Date(Date.now() + 10 * 60 * 1e3);
-  await db.delete(otpCodes).where(eq(otpCodes.phone, normalized));
-  await db.insert(otpCodes).values({ phone: normalized, code, expiresAt });
-  if (process.env.NODE_ENV !== "production") {
-    logger.info({ phone: normalized, code }, "\u{1F510} OTP (dev mode)");
-  }
-  res.json({ success: true, message: "OTP sent to your phone" });
-});
-router2.post("/auth/register", async (req, res) => {
-  const { phone, username, otp } = req.body;
-  if (!phone || !username || !otp) {
-    res.status(400).json({ error: "phone, username, and otp are required" });
-    return;
-  }
-  const normalized = normalizePhone(phone);
-  const [otpRecord] = await db.select().from(otpCodes).where(and(eq(otpCodes.phone, normalized), gt(otpCodes.expiresAt, /* @__PURE__ */ new Date())));
-  if (!otpRecord) {
-    res.status(400).json({ error: "OTP expired or not found. Request a new one." });
-    return;
-  }
-  if (otpRecord.attempts >= 3) {
-    res.status(429).json({ error: "Too many attempts. Request a new OTP." });
-    return;
-  }
-  if (otpRecord.code !== otp) {
-    await db.update(otpCodes).set({ attempts: otpRecord.attempts + 1 }).where(eq(otpCodes.id, otpRecord.id));
-    res.status(400).json({ error: "Invalid OTP" });
-    return;
-  }
-  const cleanUsername = username.trim().replace(/[^a-zA-Z0-9_]/g, "").slice(0, 32);
-  if (cleanUsername.length < 3) {
-    res.status(400).json({ error: "Username must be at least 3 alphanumeric characters" });
-    return;
-  }
-  const [existingPhone] = await db.select().from(users).where(eq(users.phone, normalized));
-  if (existingPhone) {
-    res.status(409).json({ error: "Phone number already registered" });
-    return;
-  }
-  const [existingUser] = await db.select().from(users).where(eq(users.username, cleanUsername));
-  if (existingUser) {
-    res.status(409).json({ error: "Username already taken" });
-    return;
-  }
-  const [user] = await db.insert(users).values({
-    phone: normalized,
-    username: cleanUsername,
-    isActive: true
-  }).returning({ id: users.id, username: users.username });
-  await db.insert(wallets).values({
-    userId: user.id,
-    balanceCents: 0
-  });
-  await db.delete(otpCodes).where(eq(otpCodes.phone, normalized));
-  const token = generateToken();
-  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1e3);
-  await db.insert(sessions).values({ userId: user.id, token, expiresAt });
-  logger.info({ userId: user.id, username: user.username }, "User registered");
-  res.json({ success: true, token, userId: user.id, username: user.username });
-});
-router2.post("/auth/login", async (req, res) => {
-  const { phone, otp } = req.body;
-  if (!phone || !otp) {
-    res.status(400).json({ error: "phone and otp are required" });
-    return;
-  }
-  const normalized = normalizePhone(phone);
-  const [otpRecord] = await db.select().from(otpCodes).where(and(eq(otpCodes.phone, normalized), gt(otpCodes.expiresAt, /* @__PURE__ */ new Date())));
-  if (!otpRecord) {
-    res.status(400).json({ error: "OTP expired or not found. Request a new one." });
-    return;
-  }
-  if (otpRecord.attempts >= 3) {
-    res.status(429).json({ error: "Too many attempts. Request a new OTP." });
-    return;
-  }
-  if (otpRecord.code !== otp) {
-    await db.update(otpCodes).set({ attempts: otpRecord.attempts + 1 }).where(eq(otpCodes.id, otpRecord.id));
-    res.status(400).json({ error: "Invalid OTP" });
-    return;
-  }
-  const [user] = await db.select({ id: users.id, username: users.username, isActive: users.isActive }).from(users).where(eq(users.phone, normalized));
-  if (!user) {
-    res.status(404).json({ error: "Phone not registered. Please register first." });
-    return;
-  }
-  if (!user.isActive) {
-    res.status(403).json({ error: "Account deactivated" });
-    return;
-  }
-  await db.delete(otpCodes).where(eq(otpCodes.phone, normalized));
-  const token = generateToken();
-  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1e3);
-  await db.insert(sessions).values({ userId: user.id, token, expiresAt });
-  res.json({ success: true, token, userId: user.id, username: user.username });
-});
-router2.post("/auth/logout", async (req, res) => {
-  const authHeader = req.headers.authorization;
-  if (authHeader?.startsWith("Bearer ")) {
-    const token = authHeader.slice(7);
-    await db.delete(sessions).where(eq(sessions.token, token));
-  }
-  res.json({ success: true });
-});
-router2.get("/auth/me", async (req, res) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith("Bearer ")) {
-    res.status(401).json({ error: "Not authenticated" });
-    return;
-  }
-  const token = authHeader.slice(7);
-  const [session] = await db.select({ userId: sessions.userId }).from(sessions).where(and(eq(sessions.token, token), gt(sessions.expiresAt, /* @__PURE__ */ new Date())));
-  if (!session) {
-    res.status(401).json({ error: "Session expired" });
-    return;
-  }
-  const [user] = await db.select({ id: users.id, username: users.username, phone: users.phone, isAdmin: users.isAdmin }).from(users).where(eq(users.id, session.userId));
-  if (!user) {
-    res.status(404).json({ error: "User not found" });
-    return;
-  }
-  const [wallet] = await db.select({ balanceCents: wallets.balanceCents }).from(wallets).where(eq(wallets.userId, user.id));
-  res.json({
-    userId: user.id,
-    username: user.username,
-    phone: user.phone,
-    isAdmin: user.isAdmin,
-    balanceCents: wallet?.balanceCents ?? 0
-  });
-});
-var auth_default = router2;
-
-// src/routes/game.ts
-var import_express3 = __toESM(require_express2(), 1);
 
 // src/middleware/auth.ts
 async function requireAuth(req, res, next) {
@@ -60382,7 +60234,177 @@ async function optionalAuth(req, res, next) {
   next();
 }
 
+// src/routes/auth.ts
+var router2 = (0, import_express2.Router)();
+function normalizePhone(raw) {
+  const digits = raw.replace(/\D/g, "");
+  if (digits.startsWith("0") && digits.length === 10) return "254" + digits.slice(1);
+  if (digits.startsWith("254") && digits.length === 12) return digits;
+  if (digits.startsWith("7") && digits.length === 9) return "254" + digits;
+  return digits;
+}
+function generateToken() {
+  return randomBytes2(48).toString("hex");
+}
+function hashPassword(password) {
+  return createHash2("sha256").update(password).digest("hex");
+}
+router2.post("/auth/register", async (req, res) => {
+  const { phone, username, password } = req.body;
+  if (!phone || !username || !password) {
+    res.status(400).json({ error: "phone, username, and password are required" });
+    return;
+  }
+  if (password.length < 6) {
+    res.status(400).json({ error: "Password must be at least 6 characters" });
+    return;
+  }
+  const normalized = normalizePhone(phone);
+  if (normalized.length !== 12) {
+    res.status(400).json({ error: "Invalid phone number. Use format: 254XXXXXXXXX" });
+    return;
+  }
+  const cleanUsername = username.trim().replace(/[^a-zA-Z0-9_]/g, "").slice(0, 32);
+  if (cleanUsername.length < 3) {
+    res.status(400).json({ error: "Username must be at least 3 alphanumeric characters" });
+    return;
+  }
+  const [existingPhone] = await db.select().from(users).where(eq(users.phone, normalized));
+  if (existingPhone) {
+    res.status(409).json({ error: "Phone number already registered" });
+    return;
+  }
+  const [existingUser] = await db.select().from(users).where(eq(users.username, cleanUsername));
+  if (existingUser) {
+    res.status(409).json({ error: "Username already taken" });
+    return;
+  }
+  const [user] = await db.insert(users).values({
+    phone: normalized,
+    username: cleanUsername,
+    passwordHash: hashPassword(password),
+    isActive: true
+  }).returning({ id: users.id, username: users.username });
+  await db.insert(wallets).values({ userId: user.id, balanceCents: 0 });
+  const token = generateToken();
+  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1e3);
+  await db.insert(sessions).values({ userId: user.id, token, expiresAt });
+  logger.info({ userId: user.id, username: user.username }, "User registered");
+  res.json({ success: true, token, userId: user.id, username: user.username });
+});
+router2.post("/auth/login", async (req, res) => {
+  const { phone, password } = req.body;
+  if (!phone || !password) {
+    res.status(400).json({ error: "phone and password are required" });
+    return;
+  }
+  const normalized = normalizePhone(phone);
+  const [user] = await db.select({ id: users.id, username: users.username, passwordHash: users.passwordHash, isActive: users.isActive }).from(users).where(eq(users.phone, normalized));
+  if (!user) {
+    res.status(404).json({ error: "Phone not registered. Please register first." });
+    return;
+  }
+  if (!user.isActive) {
+    res.status(403).json({ error: "Account deactivated" });
+    return;
+  }
+  if (user.passwordHash !== hashPassword(password)) {
+    res.status(401).json({ error: "Incorrect password" });
+    return;
+  }
+  const token = generateToken();
+  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1e3);
+  await db.insert(sessions).values({ userId: user.id, token, expiresAt });
+  res.json({ success: true, token, userId: user.id, username: user.username });
+});
+router2.post("/auth/logout", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (authHeader?.startsWith("Bearer ")) {
+    const token = authHeader.slice(7);
+    await db.delete(sessions).where(eq(sessions.token, token));
+  }
+  res.json({ success: true });
+});
+router2.get("/auth/me", async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) {
+    res.status(401).json({ error: "Not authenticated" });
+    return;
+  }
+  const token = authHeader.slice(7);
+  const [session] = await db.select({ userId: sessions.userId }).from(sessions).where(and(eq(sessions.token, token), gt(sessions.expiresAt, /* @__PURE__ */ new Date())));
+  if (!session) {
+    res.status(401).json({ error: "Session expired" });
+    return;
+  }
+  const [user] = await db.select({ id: users.id, username: users.username, phone: users.phone, isAdmin: users.isAdmin }).from(users).where(eq(users.id, session.userId));
+  if (!user) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+  const [wallet] = await db.select({ balanceCents: wallets.balanceCents }).from(wallets).where(eq(wallets.userId, user.id));
+  res.json({
+    userId: user.id,
+    username: user.username,
+    phone: user.phone,
+    isAdmin: user.isAdmin,
+    balanceCents: wallet?.balanceCents ?? 0
+  });
+});
+router2.get("/auth/profile", requireAuth, async (req, res) => {
+  const userId = req.userId;
+  const [user] = await db.select({ id: users.id, username: users.username, phone: users.phone, createdAt: users.createdAt }).from(users).where(eq(users.id, userId));
+  if (!user) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+  const [wallet] = await db.select({
+    balanceCents: wallets.balanceCents,
+    totalDeposited: wallets.totalDeposited,
+    totalWithdrawn: wallets.totalWithdrawn
+  }).from(wallets).where(eq(wallets.userId, userId));
+  const txns = await db.select({ type: transactions.type, amountCents: transactions.amountCents }).from(transactions).where(eq(transactions.userId, userId));
+  let totalWonCents = 0;
+  let totalBetCents = 0;
+  for (const t of txns) {
+    if (t.type === "win") totalWonCents += Number(t.amountCents);
+    if (t.type === "bet") totalBetCents += Number(t.amountCents);
+  }
+  res.json({
+    userId: user.id,
+    username: user.username,
+    phone: user.phone,
+    createdAt: user.createdAt.toISOString(),
+    balanceCents: wallet?.balanceCents ?? 0,
+    totalDepositedCents: wallet?.totalDeposited ?? 0,
+    totalWithdrawnCents: wallet?.totalWithdrawn ?? 0,
+    totalWonCents,
+    totalBetCents
+  });
+});
+router2.patch("/auth/profile", requireAuth, async (req, res) => {
+  const { username } = req.body;
+  if (!username) {
+    res.status(400).json({ error: "username is required" });
+    return;
+  }
+  const clean = username.trim().replace(/[^a-zA-Z0-9_]/g, "").slice(0, 32);
+  if (clean.length < 3) {
+    res.status(400).json({ error: "Username must be at least 3 characters" });
+    return;
+  }
+  const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.username, clean));
+  if (existing && existing.id !== req.userId) {
+    res.status(409).json({ error: "Username already taken" });
+    return;
+  }
+  await db.update(users).set({ username: clean, updatedAt: /* @__PURE__ */ new Date() }).where(eq(users.id, req.userId));
+  res.json({ success: true, username: clean });
+});
+var auth_default = router2;
+
 // src/routes/game.ts
+var import_express3 = __toESM(require_express2(), 1);
 var router3 = (0, import_express3.Router)();
 router3.get("/game/state", optionalAuth, async (_req, res) => {
   const game = getCurrentGame();
@@ -60931,6 +60953,17 @@ setBroadcast((event, data) => {
     startBotRound();
   }
 });
+var runCleanup = async () => {
+  try {
+    const sessionCount = await cleanupExpiredSessions();
+    const otpCount = await cleanupExpiredOtps();
+    if (sessionCount > 0 || otpCount > 0) {
+      logger.info({ sessionCount, otpCount }, "Cleanup: expired sessions/OTPs deleted");
+    }
+  } catch (err) {
+    logger.error({ err }, "Session cleanup failed");
+  }
+};
 server.listen(port, async () => {
   logger.info({ port }, "Server listening");
   try {
@@ -60939,6 +60972,8 @@ server.listen(port, async () => {
     await initBots();
     await initGameEngine(chain);
     logger.info("Game engine initialized");
+    runCleanup();
+    setInterval(runCleanup, 6 * 60 * 60 * 1e3);
   } catch (err) {
     logger.error({ err }, "Failed to initialize game engine");
     process.exit(1);

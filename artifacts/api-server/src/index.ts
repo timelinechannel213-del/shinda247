@@ -3,7 +3,13 @@ import app from './app';
 import { logger } from './lib/logger';
 import { createWsServer, broadcast } from './lib/wsServer';
 import { initBots, startBotRound } from './lib/bots';
-import { initGameEngine, setBroadcast, generateHashChain } from '@workspace/db';
+import {
+  initGameEngine,
+  setBroadcast,
+  generateHashChain,
+  cleanupExpiredSessions,
+  cleanupExpiredOtps,
+} from '@workspace/db';
 
 const rawPort = process.env['PORT'];
 
@@ -29,6 +35,18 @@ setBroadcast((event, data) => {
   }
 });
 
+const runCleanup = async () => {
+  try {
+    const sessionCount = await cleanupExpiredSessions();
+    const otpCount     = await cleanupExpiredOtps();
+    if (sessionCount > 0 || otpCount > 0) {
+      logger.info({ sessionCount, otpCount }, 'Cleanup: expired sessions/OTPs deleted');
+    }
+  } catch (err) {
+    logger.error({ err }, 'Session cleanup failed');
+  }
+};
+
 server.listen(port, async () => {
   logger.info({ port }, 'Server listening');
 
@@ -40,6 +58,9 @@ server.listen(port, async () => {
     await initGameEngine(chain);
 
     logger.info('Game engine initialized');
+
+    runCleanup();
+    setInterval(runCleanup, 6 * 60 * 60 * 1000);
   } catch (err) {
     logger.error({ err }, 'Failed to initialize game engine');
     process.exit(1);

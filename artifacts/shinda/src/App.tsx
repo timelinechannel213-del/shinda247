@@ -8,6 +8,7 @@ import Home from '@/pages/home';
 import HistoryPage from '@/pages/history';
 import PlayersPage from '@/pages/players';
 import NotificationsPage from '@/pages/notifications';
+import ProfilePage from '@/pages/profile';
 import NotFound from '@/pages/not-found';
 
 const queryClient = new QueryClient({
@@ -40,6 +41,7 @@ function AppRoutes() {
       <Route path="/history" component={HistoryPage} />
       <Route path="/players" component={PlayersPage} />
       <Route path="/notifications" component={NotificationsPage} />
+      <Route path="/profile" component={ProfilePage} />
       <Route component={NotFound} />
     </Switch>
   );

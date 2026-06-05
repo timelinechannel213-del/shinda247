@@ -9,7 +9,7 @@ import { useGameSocket } from '@/hooks/use-game-socket';
 
 export default function Home() {
   const { token } = useAuth();
-  const { gameState, activeBets, connected, send } = useGameSocket(token);
+  const { gameState, activeBets, connected, send, countdown } = useGameSocket(token);
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-background text-foreground">
@@ -20,7 +20,7 @@ export default function Home() {
 
         <main className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
           <div className="flex flex-col gap-6 max-w-5xl mx-auto w-full">
-            <GameCanvas gameState={gameState} />
+            <GameCanvas gameState={gameState} countdown={countdown} />
 
             <GameControls
               gameState={gameState}

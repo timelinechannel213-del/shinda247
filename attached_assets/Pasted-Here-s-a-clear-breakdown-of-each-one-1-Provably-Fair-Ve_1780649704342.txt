@@ -1,0 +1,249 @@
+Here's a clear breakdown of each one:
+
+---
+
+## 1. Provably Fair Verification Modal
+
+### What it is
+A popup that lets any player verify that the crash point for any round was **not manipulated** by the server. They can check it themselves using math.
+
+### What needs to be built
+
+**UI — a modal that appears when you click any hash in the history panel**
+```
+┌─────────────────────────────────────────┐
+│  🔐 Verify Round #1234                  │
+│                                         │
+│  Game Hash:                             │
+│  [bd96b851...fcc1          ] [Copy]     │
+│                                         │
+│  Next Hash (revealed after):            │
+│  [da372fdc...e796          ]            │
+│                                         │
+│  Crash Point:    2.35x                  │
+│  Verified:       ✅ FAIR                │
+│                                         │
+│  [Verify Manually] [Close]              │
+└─────────────────────────────────────────┘
+```
+
+**Logic — runs entirely in the browser, no server needed**
+```ts
+// Player pastes the hash, browser computes crash point
+function verify(hash: string, reportedCrash: number): boolean {
+  const E = 2 ** 52
+  const h = parseInt(hash.slice(0, 13), 16)
+  if (h % 33 === 0) return reportedCrash === 100
+  const computed = Math.floor((100 * E - h) / (E - h)) / 100
+  return Math.floor(computed * 100) === reportedCrash
+}
+```
+
+**What the API needs to return additionally**
+- The `nextHash` field on each game round so players can verify the chain link
+- Currently your `GameRound` schema only returns `hash` — add `prevHash`
+
+### Files to change
+- `lib/api-spec/openapi.yaml` — add `prevHash` to `GameRound` schema
+- `lib/db/src/schema/games.ts` — already has `prevHash` column ✅
+- `artifacts/api-server/src/routes/game.ts` — include `prevHash` in history response
+- `artifacts/shinda/src/components/game/history-panel.tsx` — make hash clickable, open modal
+- `artifacts/shinda/src/components/game/verify-modal.tsx` — new file, the modal itself
+
+---
+
+## 2. Profile Page
+
+### What it is
+A dedicated page where the logged-in user can see their account details, balance, and full transaction history.
+
+### What needs to be built
+
+**Route** — already have wouter routing in `App.tsx`, just add `/profile`
+
+**UI sections**
+
+```
+┌─────────────────────────────────────────┐
+│  👤 JohnDoe                    [Edit]   │
+│  📱 +254712345678                       │
+│  Member since: Jan 2025                 │
+├─────────────────────────────────────────┤
+│  💰 Balance: KES 2,450.00               │
+│  Total Deposited:  KES 5,000            │
+│  Total Withdrawn:  KES 1,200            │
+│  Total Won:        KES 3,100            │
+│  Total Lost:       KES 3,450            │
+├─────────────────────────────────────────┤
+│  Transaction History                    │
+│  ┌──────────────────────────────────┐   │
+│  │ + KES 500   Deposit   12:30pm    │   │
+│  │ - KES 100   Bet #234  12:31pm    │   │
+│  │ + KES 235   Win #234  12:32pm    │   │
+│  └──────────────────────────────────┘   │
+└─────────────────────────────────────────┘
+```
+
+**Edit username flow**
+```
+Click [Edit] → inline input appears → type new username → 
+[Save] hits PATCH /api/auth/profile → updates users table
+```
+
+### What the API needs
+
+New endpoints to add to `artifacts/api-server/src/routes/auth.ts`:
+```
+GET  /api/auth/profile        → returns user + wallet stats
+PATCH /api/auth/profile       → update username
+GET  /api/wallet/transactions → paginated transaction history
+```
+
+### Files to change
+- `lib/api-spec/openapi.yaml` — add profile + transactions endpoints
+- `artifacts/api-server/src/routes/auth.ts` — add GET/PATCH profile
+- `artifacts/api-server/src/routes/game.ts` — add GET transactions
+- `artifacts/shinda/src/pages/profile.tsx` — new page
+- `artifacts/shinda/src/App.tsx` — add `/profile` route
+- `artifacts/shinda/src/components/layout/sidebar.tsx` — add Profile nav link
+
+---
+
+## 3. Round Countdown Timer
+
+### What it is
+A visible countdown showing how many seconds remain in the betting phase before the rocket launches. Players need to know when to hurry up and place their bet.
+
+### What needs to be built
+
+**Visual — inside the game canvas during betting phase**
+```
+┌─────────────────────────────┐
+│                             │
+│   Betting closes in...      │
+│                             │
+│        ⏱️  3s               │  ← big countdown number
+│                             │
+│   [Place Your Bets!]        │
+└─────────────────────────────┘
+```
+
+**Logic — purely client side**
+
+The server already sends `wait_ms` in the `1501` event:
+```ts
+broadcast('1501', { id: game.id, wait_ms: 2000 })
+```
+
+And the betting phase is a fixed 5 seconds. So the client can compute:
+```ts
+// In use-game-socket.ts
+case '1501': {
+  bettingEndsAt = Date.now() + 2000 + 5000  // wait + betting duration
+  break
+}
+case 'betting_open': {
+  bettingEndsAt = Date.now() + 5000
+  break
+}
+
+// Then in a useEffect with setInterval:
+const remaining = Math.max(0, bettingEndsAt - Date.now())
+setCountdown(Math.ceil(remaining / 1000))  // 5, 4, 3, 2, 1
+```
+
+**The betting duration needs to be sent from server**
+
+Currently it's hardcoded as 5000ms in `game.engine.ts`. Add it to the `betting_open` broadcast:
+```ts
+broadcast('betting_open', { gameId, bettingDurationMs: 5000 })
+```
+
+**Visual urgency** — countdown should change color:
+```
+5s → white
+3s → yellow/warning
+1s → red/destructive + pulse animation
+0s → "LAUNCHING!" flash
+```
+
+### Files to change
+- `lib/db/src/services/game.engine.ts` — add `bettingDurationMs` to `betting_open` broadcast
+- `artifacts/shinda/src/hooks/use-game-socket.ts` — track `bettingEndsAt`, expose `countdown`
+- `artifacts/shinda/src/components/game/game-canvas.tsx` — render countdown during betting phase
+
+---
+
+## 4. Session Cleanup Cron
+
+### What it is
+A background job that periodically deletes expired sessions from the database. Without it, the `sessions` table grows forever, slowing down auth queries over time.
+
+### What needs to be built
+
+**The cleanup query**
+```ts
+// Delete all sessions where expiresAt is in the past
+await db.delete(sessions)
+  .where(lt(sessions.expiresAt, new Date()))
+```
+
+**Where to run it**
+
+Inside `artifacts/api-server/src/index.ts`, add a `setInterval` when the server starts:
+
+```ts
+// Run every 6 hours
+setInterval(async () => {
+  try {
+    const result = await db
+      .delete(sessions)
+      .where(lt(sessions.expiresAt, new Date()))
+      .returning({ id: sessions.id })
+    
+    logger.info(`Session cleanup: deleted ${result.length} expired sessions`)
+  } catch (err) {
+    logger.error({ err }, 'Session cleanup failed')
+  }
+}, 6 * 60 * 60 * 1000)  // every 6 hours
+
+// Also run once at startup to clean up from previous server runs
+```
+
+**Also add a database index** on `sessions.expiresAt` so the delete query is fast:
+
+In `lib/db/src/schema/users.ts`:
+```ts
+import { index } from 'drizzle-orm/pg-core'
+
+export const sessions = pgTable('sessions', {
+  // ... existing columns
+}, (table) => ({
+  expiresAtIdx: index('sessions_expires_at_idx').on(table.expiresAt)
+}))
+```
+
+**Also add to OTP codes** — same problem exists with the `otp_codes` table:
+```ts
+// Delete OTPs older than 24 hours
+await db.delete(otpCodes)
+  .where(lt(otpCodes.expiresAt, new Date()))
+```
+
+### Files to change
+- `lib/db/src/schema/users.ts` — add index on `sessions.expiresAt`
+- `artifacts/api-server/src/index.ts` — add cleanup interval on startup
+- `lib/db/src/services/` — add `cleanup.service.ts` with the delete logic
+
+---
+
+## Summary Table
+
+| Item | New Files | Changed Files | Difficulty |
+|------|-----------|---------------|------------|
+| Provably Fair Modal | `verify-modal.tsx` | `history-panel.tsx`, `game.ts` route, `openapi.yaml` | Medium |
+| Profile Page | `profile.tsx`, `profile` route | `auth.ts`, `App.tsx`, `sidebar.tsx`, `openapi.yaml` | Medium |
+| Countdown Timer | none | `game.engine.ts`, `use-game-socket.ts`, `game-canvas.tsx` | Easy |
+| Session Cleanup | `cleanup.service.ts` | `users.ts` schema, `index.ts` server | Easy |
+
+Want me to start building any of these now?

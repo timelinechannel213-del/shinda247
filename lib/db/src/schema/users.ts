@@ -1,4 +1,4 @@
-import { pgTable, serial, varchar, timestamp, boolean, integer } from 'drizzle-orm/pg-core';
+import { pgTable, serial, varchar, timestamp, boolean, integer, index } from 'drizzle-orm/pg-core';
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
 
 export const users = pgTable('users', {
@@ -21,7 +21,9 @@ export const otpCodes = pgTable('otp_codes', {
   expiresAt: timestamp('expires_at').notNull(),
   usedAt:    timestamp('used_at'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
-});
+}, (table) => ({
+  expiresAtIdx: index('otp_expires_at_idx').on(table.expiresAt),
+}));
 
 export const sessions = pgTable('sessions', {
   id:        serial('id').primaryKey(),
@@ -29,9 +31,11 @@ export const sessions = pgTable('sessions', {
   token:     varchar('token', { length: 512 }).notNull().unique(),
   expiresAt: timestamp('expires_at').notNull(),
   createdAt: timestamp('created_at').notNull().defaultNow(),
-});
+}, (table) => ({
+  expiresAtIdx: index('sessions_expires_at_idx').on(table.expiresAt),
+}));
 
-export const insertUserSchema  = createInsertSchema(users);
-export const selectUserSchema  = createSelectSchema(users);
-export const insertOtpSchema   = createInsertSchema(otpCodes);
+export const insertUserSchema    = createInsertSchema(users);
+export const selectUserSchema    = createSelectSchema(users);
+export const insertOtpSchema     = createInsertSchema(otpCodes);
 export const insertSessionSchema = createInsertSchema(sessions);

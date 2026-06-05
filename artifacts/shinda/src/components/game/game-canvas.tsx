@@ -6,13 +6,15 @@ import type { GameState } from '@/hooks/use-game-socket';
 
 interface GameCanvasProps {
   gameState: GameState;
+  countdown?: number | null;
 }
 
-export function GameCanvas({ gameState }: GameCanvasProps) {
+export function GameCanvas({ gameState, countdown }: GameCanvasProps) {
   const { phase, multiplier, playerCount, crashedAt } = gameState;
   const isCrashed = phase === 'crashed';
   const isFlying  = phase === 'flying';
   const isBetting = phase === 'betting';
+  const isWaiting = phase === 'waiting';
 
   const stars = useMemo(() =>
     Array.from({ length: 50 }).map((_, i) => ({
@@ -25,9 +27,12 @@ export function GameCanvas({ gameState }: GameCanvasProps) {
     })), []
   );
 
-  const displayMultiplier = isCrashed && crashedAt != null
-    ? crashedAt
-    : multiplier;
+  const displayMultiplier = isCrashed && crashedAt != null ? crashedAt : multiplier;
+
+  const countdownColor =
+    countdown != null && countdown <= 1 ? 'text-destructive' :
+    countdown != null && countdown <= 3 ? 'text-warning' :
+    'text-white';
 
   return (
     <div className="relative w-full h-full min-h-[350px] md:min-h-[450px] bg-background rounded-2xl border border-border/50 shadow-2xl overflow-hidden flex flex-col">
@@ -60,17 +65,9 @@ export function GameCanvas({ gameState }: GameCanvasProps) {
             <span className="font-mono text-xs font-bold leading-none">{playerCount}</span>
           </div>
         </div>
-
-        {isBetting && (
-          <div className="bg-primary/20 border border-primary/40 rounded-lg px-3 py-2">
-            <span className="text-xs font-bold text-primary uppercase tracking-wider animate-pulse">
-              Place Your Bets!
-            </span>
-          </div>
-        )}
       </div>
 
-      <div className="absolute inset-0 flex flex-col items-center justify-center z-10 pointer-events-none mt-10">
+      <div className="absolute inset-0 flex flex-col items-center justify-center z-10 pointer-events-none mt-6">
         <motion.h1
           className={cn(
             'font-mono text-7xl md:text-9xl font-black tracking-tighter drop-shadow-2xl transition-colors duration-300',
@@ -92,15 +89,35 @@ export function GameCanvas({ gameState }: GameCanvasProps) {
           </motion.div>
         )}
 
-        {(phase === 'waiting' || phase === 'betting') && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="mt-4 text-primary font-display font-bold text-xl uppercase tracking-widest flex items-center gap-2"
-          >
-            <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-            {phase === 'betting' ? 'Betting Open' : 'Next Round Soon'}
-          </motion.div>
+        {(isWaiting || isBetting) && (
+          <div className="mt-4 flex flex-col items-center gap-2">
+            {countdown != null && countdown > 0 ? (
+              <>
+                <motion.span
+                  key={countdown}
+                  initial={{ scale: 1.3, opacity: 0.6 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  className={cn('font-mono font-black text-6xl md:text-7xl drop-shadow-xl', countdownColor,
+                    countdown <= 1 && 'animate-pulse'
+                  )}
+                >
+                  {countdown}s
+                </motion.span>
+                <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest">
+                  {isBetting ? 'Betting closes in' : 'Next round in'}
+                </span>
+              </>
+            ) : (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="text-primary font-display font-bold text-xl uppercase tracking-widest flex items-center gap-2"
+              >
+                <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                {isBetting ? 'Place Your Bets!' : 'Next Round Soon'}
+              </motion.div>
+            )}
+          </div>
         )}
       </div>
 
@@ -108,7 +125,7 @@ export function GameCanvas({ gameState }: GameCanvasProps) {
         <motion.div
           className="relative mt-48"
           animate={
-            phase === 'waiting' || phase === 'betting'
+            isWaiting || isBetting
               ? { y: 100, opacity: 1 }
               : isFlying
               ? {

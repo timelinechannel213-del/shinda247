@@ -37,12 +37,15 @@ export function useGameSocket(token: string | null) {
     totalBetsCents: 0,
     hash:           '',
   });
-  const [activeBets, setActiveBets]   = useState<ActiveBet[]>([]);
-  const [connected, setConnected]     = useState(false);
+  const [activeBets, setActiveBets] = useState<ActiveBet[]>([]);
+  const [connected, setConnected]   = useState(false);
+  const [countdown, setCountdown]   = useState<number | null>(null);
 
-  const wsRef       = useRef<WebSocket | null>(null);
-  const tickRef     = useRef<ReturnType<typeof setInterval> | null>(null);
-  const flyStartRef = useRef<number | null>(null);
+  const wsRef           = useRef<WebSocket | null>(null);
+  const tickRef         = useRef<ReturnType<typeof setInterval> | null>(null);
+  const flyStartRef     = useRef<number | null>(null);
+  const countdownRef    = useRef<ReturnType<typeof setInterval> | null>(null);
+  const bettingEndsAtRef = useRef<number | null>(null);
 
   const startTicker = useCallback(() => {
     if (tickRef.current) clearInterval(tickRef.current);
@@ -60,6 +63,27 @@ export function useGameSocket(token: string | null) {
   const stopTicker = useCallback(() => {
     if (tickRef.current) { clearInterval(tickRef.current); tickRef.current = null; }
     flyStartRef.current = null;
+  }, []);
+
+  const startCountdown = useCallback((endsAt: number) => {
+    if (countdownRef.current) clearInterval(countdownRef.current);
+    bettingEndsAtRef.current = endsAt;
+    const update = () => {
+      const remaining = Math.max(0, (bettingEndsAtRef.current ?? 0) - Date.now());
+      setCountdown(Math.ceil(remaining / 1000));
+      if (remaining <= 0 && countdownRef.current) {
+        clearInterval(countdownRef.current);
+        countdownRef.current = null;
+      }
+    };
+    update();
+    countdownRef.current = setInterval(update, 200);
+  }, []);
+
+  const stopCountdown = useCallback(() => {
+    if (countdownRef.current) { clearInterval(countdownRef.current); countdownRef.current = null; }
+    bettingEndsAtRef.current = null;
+    setCountdown(null);
   }, []);
 
   const connect = useCallback(() => {
@@ -94,6 +118,7 @@ export function useGameSocket(token: string | null) {
       case '1501': {
         const d = data as { id: number; wait_ms?: number };
         stopTicker();
+        stopCountdown();
         setActiveBets([]);
         setGameState(s => ({
           ...s,
@@ -106,15 +131,21 @@ export function useGameSocket(token: string | null) {
           playerCount: 0,
           totalBetsCents: 0,
         }));
+        const waitMs = d.wait_ms ?? 2000;
+        startCountdown(Date.now() + waitMs + 5000);
         break;
       }
 
       case 'betting_open': {
+        const d = data as { gameId?: number; bettingDurationMs?: number };
+        const duration = d.bettingDurationMs ?? 5000;
         setGameState(s => ({ ...s, phase: 'betting' }));
+        startCountdown(Date.now() + duration);
         break;
       }
 
       case '1502': {
+        stopCountdown();
         startTicker();
         setGameState(s => ({ ...s, phase: 'flying', multiplier: 1.0, elapsedMs: 0 }));
         break;
@@ -133,6 +164,7 @@ export function useGameSocket(token: string | null) {
       case '1504': {
         const d = data as { gameCrash: number; elapsed: number; gameHash: string };
         stopTicker();
+        stopCountdown();
         setGameState(s => ({
           ...s,
           phase:     'crashed',
@@ -202,12 +234,13 @@ export function useGameSocket(token: string | null) {
         break;
       }
     }
-  }, [startTicker, stopTicker]);
+  }, [startTicker, stopTicker, startCountdown, stopCountdown]);
 
   useEffect(() => {
     connect();
     return () => {
       stopTicker();
+      stopCountdown();
       wsRef.current?.close();
     };
   }, [connect]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -218,5 +251,5 @@ export function useGameSocket(token: string | null) {
     }
   }, []);
 
-  return { gameState, activeBets, connected, send };
+  return { gameState, activeBets, connected, send, countdown };
 }
