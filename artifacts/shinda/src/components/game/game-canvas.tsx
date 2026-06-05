@@ -1,91 +1,253 @@
-import { useMemo } from 'react';
+import { useEffect, useRef, useCallback, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Rocket, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { GameState } from '@/hooks/use-game-socket';
+
+const K = 35_000;
+const exp = (ms: number) => Math.exp(ms / K);
+
+interface WinFlash {
+  payoutCents: number;
+  multiplier: number;
+}
 
 interface GameCanvasProps {
   gameState: GameState;
   countdown?: number | null;
+  winFlash?: WinFlash | null;
 }
 
-export function GameCanvas({ gameState, countdown }: GameCanvasProps) {
-  const { phase, multiplier, playerCount, crashedAt } = gameState;
+export function GameCanvas({ gameState, countdown, winFlash }: GameCanvasProps) {
+  const canvasRef    = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const pointsRef    = useRef<Array<{ t: number; m: number }>>([]);
+  const flyStartRef  = useRef<number | null>(null);
+  const rafRef       = useRef<number | null>(null);
+
+  const [rocketPos, setRocketPos]     = useState({ x: -100, y: -100, angle: -45 });
+  const [flashVisible, setFlashVisible] = useState(false);
+
+  const { phase, multiplier, crashedAt } = gameState;
+  const displayMultiplier = phase === 'crashed' && crashedAt != null ? crashedAt : multiplier;
   const isCrashed = phase === 'crashed';
   const isFlying  = phase === 'flying';
   const isBetting = phase === 'betting';
   const isWaiting = phase === 'waiting';
 
-  const stars = useMemo(() =>
-    Array.from({ length: 50 }).map((_, i) => ({
-      id:       i,
-      left:     `${Math.random() * 100}%`,
-      top:      `${Math.random() * 100}%`,
-      size:     Math.random() * 2 + 1 + 'px',
-      delay:    `${Math.random() * 3}s`,
-      duration: `${Math.random() * 3 + 2}s`,
-    })), []
-  );
+  useEffect(() => {
+    if (!winFlash) return;
+    setFlashVisible(true);
+    const t = setTimeout(() => setFlashVisible(false), 1400);
+    return () => clearTimeout(t);
+  }, [winFlash]);
 
-  const displayMultiplier = isCrashed && crashedAt != null ? crashedAt : multiplier;
+  const drawFrame = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const W   = canvas.width;
+    const H   = canvas.height;
+    const pts = pointsRef.current;
+
+    ctx.clearRect(0, 0, W, H);
+    if (pts.length < 2) return;
+
+    const lastPt = pts[pts.length - 1];
+    const maxT   = Math.max(lastPt.t * 1.15, 6000);
+    const maxM   = Math.max(lastPt.m * 1.35, 2.0);
+
+    const pad = { l: 10, r: 20, t: 50, b: 30 };
+    const plotW = W - pad.l - pad.r;
+    const plotH = H - pad.t - pad.b;
+
+    const toX = (t: number) => pad.l + (t / maxT) * plotW;
+    const toY = (m: number) => H - pad.b - ((m - 1) / (maxM - 1)) * plotH;
+
+    // Filled area under curve
+    ctx.beginPath();
+    ctx.moveTo(toX(pts[0].t), toY(pts[0].m));
+    for (const pt of pts) ctx.lineTo(toX(pt.t), toY(pt.m));
+    ctx.lineTo(toX(lastPt.t), H - pad.b);
+    ctx.lineTo(toX(pts[0].t), H - pad.b);
+    ctx.closePath();
+    const grad = ctx.createLinearGradient(0, H - pad.b, 0, pad.t);
+    grad.addColorStop(0, 'rgba(255,107,0,0.0)');
+    grad.addColorStop(1, 'rgba(255,107,0,0.15)');
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // Glow layers
+    const lineColor = isCrashed ? '#ef4444' : '#ff6b00';
+    const glowColor = isCrashed ? 'rgba(239,68,68,' : 'rgba(255,107,0,';
+    [[10, `${glowColor}0.08)`], [5, `${glowColor}0.25)`], [2.5, lineColor]].forEach(([lw, color]) => {
+      ctx.beginPath();
+      ctx.moveTo(toX(pts[0].t), toY(pts[0].m));
+      for (const pt of pts) ctx.lineTo(toX(pt.t), toY(pt.m));
+      ctx.strokeStyle = color as string;
+      ctx.lineWidth   = lw as number;
+      ctx.lineJoin    = 'round';
+      ctx.lineCap     = 'round';
+      ctx.stroke();
+    });
+
+    // Rocket position — angle = direction of curve tip
+    const rx = toX(lastPt.t);
+    const ry = toY(lastPt.m);
+    let angle = -45;
+    if (pts.length >= 5) {
+      const prev = pts[pts.length - 5];
+      const dx = toX(lastPt.t) - toX(prev.t);
+      const dy = toY(lastPt.m) - toY(prev.m);
+      angle = Math.atan2(dy, dx) * (180 / Math.PI);
+    }
+    setRocketPos({ x: rx, y: ry, angle });
+  }, [isCrashed]);
+
+  // Flying phase — RAF loop
+  useEffect(() => {
+    if (phase !== 'flying') {
+      if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+      if (phase === 'waiting' || phase === 'betting') {
+        pointsRef.current = [];
+        flyStartRef.current = null;
+        const canvas = canvasRef.current;
+        if (canvas) canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height);
+        setRocketPos({ x: -100, y: -100, angle: -45 });
+      }
+      if (phase === 'crashed') {
+        drawFrame(); // freeze curve
+      }
+      return;
+    }
+
+    pointsRef.current = [];
+    flyStartRef.current = Date.now();
+
+    const tick = () => {
+      const elapsed = Date.now() - (flyStartRef.current ?? Date.now());
+      const m = exp(elapsed);
+      pointsRef.current.push({ t: elapsed, m });
+      if (pointsRef.current.length > 3000) pointsRef.current.shift();
+      drawFrame();
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+
+    return () => {
+      if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+    };
+  }, [phase, drawFrame]);
+
+  // Resize canvas to match container
+  useEffect(() => {
+    const container = containerRef.current;
+    const canvas    = canvasRef.current;
+    if (!container || !canvas) return;
+    const resize = () => {
+      const r = container.getBoundingClientRect();
+      canvas.width  = r.width;
+      canvas.height = r.height;
+      drawFrame();
+    };
+    resize();
+    const ro = new ResizeObserver(resize);
+    ro.observe(container);
+    return () => ro.disconnect();
+  }, [drawFrame]);
 
   const countdownColor =
     countdown != null && countdown <= 1 ? 'text-destructive' :
-    countdown != null && countdown <= 3 ? 'text-warning' :
+    countdown != null && countdown <= 3 ? 'text-yellow-400' :
     'text-white';
 
-  return (
-    <div className="relative w-full h-full min-h-[350px] md:min-h-[450px] bg-background rounded-2xl border border-border/50 shadow-2xl overflow-hidden flex flex-col">
+  // Deterministic stars
+  const stars = useMemo(() =>
+    Array.from({ length: 55 }).map((_, i) => ({
+      left:     `${(i * 17.31 + 3) % 100}%`,
+      top:      `${(i * 23.71 + 7) % 100}%`,
+      size:     (i % 3) + 1,
+      opacity:  0.3 + (i % 5) * 0.1,
+      delay:    `${(i * 0.37) % 3}s`,
+      duration: `${2 + (i * 0.23) % 3}s`,
+    })), []
+  );
 
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        {stars.map(star => (
+  return (
+    <div
+      ref={containerRef}
+      className="relative w-full min-h-[360px] md:min-h-[460px] bg-[#060612] rounded-2xl border border-border/50 shadow-2xl overflow-hidden"
+    >
+      {/* Stars */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        {stars.map((s, i) => (
           <div
-            key={star.id}
+            key={i}
             className="absolute rounded-full bg-white star"
             style={{
-              left:       star.left,
-              top:        star.top,
-              width:      star.size,
-              height:     star.size,
-              '--delay':    star.delay,
-              '--duration': star.duration,
+              left: s.left, top: s.top,
+              width: `${s.size}px`, height: `${s.size}px`,
+              opacity: s.opacity,
+              '--delay': s.delay, '--duration': s.duration,
             } as React.CSSProperties}
           />
         ))}
       </div>
 
-      <div className={cn('absolute bottom-0 left-0 right-0 h-[150px] mountain-bg opacity-40', isFlying && 'moving')} />
-      <div className={cn('absolute bottom-0 left-0 right-0 h-[100px] mountain-bg opacity-70', isFlying && 'moving')} style={{ animationDuration: '10s' }} />
+      {/* Exponential curve */}
+      <canvas ref={canvasRef} className="absolute inset-0 w-full h-full pointer-events-none" />
 
-      <div className="absolute top-4 left-4 right-4 flex justify-between items-start z-10">
-        <div className="bg-card/80 backdrop-blur-sm border border-border/50 rounded-lg px-3 py-2 flex items-center gap-2">
-          <Users className="w-4 h-4 text-success" />
-          <div className="flex flex-col">
-            <span className="text-[9px] uppercase text-muted-foreground font-bold">Players</span>
-            <span className="font-mono text-xs font-bold leading-none">{playerCount}</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="absolute inset-0 flex flex-col items-center justify-center z-10 pointer-events-none mt-6">
-        <motion.h1
-          className={cn(
-            'font-mono text-7xl md:text-9xl font-black tracking-tighter drop-shadow-2xl transition-colors duration-300',
-            isCrashed ? 'text-destructive' : isFlying ? 'text-white' : 'text-white/50'
+      {/* Rocket emoji at curve tip */}
+      {(isFlying || isCrashed) && rocketPos.x > 0 && (
+        <div
+          className="absolute pointer-events-none select-none"
+          style={{
+            left:        rocketPos.x - 18,
+            top:         rocketPos.y - 18,
+            fontSize:    '32px',
+            lineHeight:  1,
+            transform:   `rotate(${rocketPos.angle + 90}deg)`,
+            filter:      isCrashed ? 'grayscale(1) opacity(0.4)' : 'drop-shadow(0 0 8px rgba(255,107,0,0.8))',
+            transition:  'filter 0.3s',
+          }}
+        >
+          🚀
+          {isFlying && (
+            <div
+              className="absolute top-full left-1/2 -translate-x-1/2 w-4 h-6 rounded-full animate-pulse"
+              style={{
+                background: 'linear-gradient(to bottom, #ff6b00, #ffcc00, transparent)',
+                filter: 'blur(3px)',
+                transform: `translateX(-50%) rotate(180deg)`,
+              }}
+            />
           )}
-          animate={isFlying ? { scale: [1, 1.02, 1] } : { scale: 1 }}
-          transition={{ repeat: Infinity, duration: 2 }}
+        </div>
+      )}
+
+      {/* Central display */}
+      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+        <motion.span
+          className={cn(
+            'font-mono font-black tracking-tighter select-none drop-shadow-2xl',
+            isCrashed ? 'text-destructive text-7xl md:text-9xl' :
+            isFlying  ? 'text-white text-6xl md:text-8xl' :
+                        'text-white/30 text-5xl md:text-7xl'
+          )}
+          animate={isFlying ? { textShadow: ['0 0 20px rgba(255,255,255,0.3)', '0 0 40px rgba(255,255,255,0.6)', '0 0 20px rgba(255,255,255,0.3)'] } : {}}
+          transition={{ repeat: Infinity, duration: 1.5 }}
         >
           {displayMultiplier.toFixed(2)}x
-        </motion.h1>
+        </motion.span>
 
         {isCrashed && (
           <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mt-4 bg-destructive/20 text-destructive border border-destructive/30 px-6 py-2 rounded-full font-display font-bold text-xl uppercase tracking-widest shadow-[0_0_30px_rgba(239,68,68,0.3)]"
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="mt-3 bg-destructive/20 text-destructive border border-destructive/40 px-6 py-2 rounded-full font-display font-bold text-lg uppercase tracking-widest shadow-[0_0_40px_rgba(239,68,68,0.4)]"
           >
-            Crashed!
+            CRASHED!
           </motion.div>
         )}
 
@@ -95,11 +257,9 @@ export function GameCanvas({ gameState, countdown }: GameCanvasProps) {
               <>
                 <motion.span
                   key={countdown}
-                  initial={{ scale: 1.3, opacity: 0.6 }}
+                  initial={{ scale: 1.4, opacity: 0.5 }}
                   animate={{ scale: 1, opacity: 1 }}
-                  className={cn('font-mono font-black text-6xl md:text-7xl drop-shadow-xl', countdownColor,
-                    countdown <= 1 && 'animate-pulse'
-                  )}
+                  className={cn('font-mono font-black text-6xl drop-shadow-xl', countdownColor, countdown <= 1 && 'animate-pulse')}
                 >
                   {countdown}s
                 </motion.span>
@@ -108,53 +268,41 @@ export function GameCanvas({ gameState, countdown }: GameCanvasProps) {
                 </span>
               </>
             ) : (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="text-primary font-display font-bold text-xl uppercase tracking-widest flex items-center gap-2"
-              >
+              <div className="text-primary font-display font-bold text-lg uppercase tracking-widest flex items-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
                 {isBetting ? 'Place Your Bets!' : 'Next Round Soon'}
-              </motion.div>
+              </div>
             )}
           </div>
         )}
       </div>
 
-      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+      {/* Cashout win flash */}
+      {flashVisible && winFlash && (
         <motion.div
-          className="relative mt-48"
-          animate={
-            isWaiting || isBetting
-              ? { y: 100, opacity: 1 }
-              : isFlying
-              ? {
-                  y: [0, -15, 0, -5],
-                  x: [-2, 2, -1, 3, -2],
-                  rotate: [-1, 2, -1, 1],
-                  opacity: 1,
-                  transition: { repeat: Infinity, duration: 0.5 },
-                }
-              : { y: 150, opacity: 0, scale: 0.5, rotate: 45 }
-          }
-          transition={{ type: 'spring', stiffness: 100 }}
+          className="absolute inset-0 flex flex-col items-center justify-center rounded-2xl pointer-events-none z-20"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: [0, 1, 1, 0] }}
+          transition={{ duration: 1.4, times: [0, 0.08, 0.65, 1] }}
+          style={{ background: 'radial-gradient(ellipse at center, rgba(34,197,94,0.5) 0%, rgba(34,197,94,0.03) 70%)' }}
         >
-          <div className="relative">
-            <Rocket
-              className={cn('w-20 h-20 md:w-24 md:h-24', isCrashed ? 'text-destructive' : 'text-white')}
-              fill="currentColor"
-              strokeWidth={1}
-            />
-            {isFlying && (
-              <motion.div
-                className="absolute -bottom-8 left-1/2 -translate-x-1/2 w-6 h-12 bg-gradient-to-b from-primary via-warning to-transparent blur-md rounded-full origin-top"
-                animate={{ scaleY: [1, 1.5, 0.8, 1.2], opacity: [0.8, 1, 0.6, 0.9] }}
-                transition={{ repeat: Infinity, duration: 0.2 }}
-              />
-            )}
-          </div>
+          <motion.div
+            initial={{ scale: 0.4, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ delay: 0.04, type: 'spring', stiffness: 350, damping: 20 }}
+            className="flex flex-col items-center gap-2 bg-black/30 backdrop-blur-sm px-8 py-5 rounded-2xl border border-success/40"
+          >
+            <span className="text-success font-black text-2xl uppercase tracking-widest">WIN! ✅</span>
+            <span className="font-mono font-black text-5xl text-success drop-shadow-lg leading-tight">
+              +KES {(winFlash.payoutCents / 100).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+            <span className="text-success/80 font-bold text-xl">at {winFlash.multiplier.toFixed(2)}x</span>
+          </motion.div>
         </motion.div>
-      </div>
+      )}
+
+      {/* Ground line */}
+      <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-border/40 to-transparent pointer-events-none" />
     </div>
   );
 }

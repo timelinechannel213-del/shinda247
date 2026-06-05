@@ -23,45 +23,44 @@ export interface ActiveBet {
 }
 
 const K = 35_000;
-const elapsedToMultiplier = (ms: number) => Math.round(Math.exp(ms / K) * 100) / 100;
+export const elapsedToMultiplier = (ms: number) => Math.round(Math.exp(ms / K) * 100) / 100;
 
 export function useGameSocket(token: string | null) {
   const [gameState, setGameState] = useState<GameState>({
-    id:             0,
-    phase:          'waiting',
-    multiplier:     1.0,
-    crashedAt:      null,
-    roundId:        0,
-    elapsedMs:      0,
-    playerCount:    0,
-    totalBetsCents: 0,
-    hash:           '',
+    id: 0, phase: 'waiting', multiplier: 1.0, crashedAt: null,
+    roundId: 0, elapsedMs: 0, playerCount: 0, totalBetsCents: 0, hash: '',
   });
   const [activeBets, setActiveBets] = useState<ActiveBet[]>([]);
   const [connected, setConnected]   = useState(false);
   const [countdown, setCountdown]   = useState<number | null>(null);
 
-  const wsRef           = useRef<WebSocket | null>(null);
-  const tickRef         = useRef<ReturnType<typeof setInterval> | null>(null);
-  const flyStartRef     = useRef<number | null>(null);
-  const countdownRef    = useRef<ReturnType<typeof setInterval> | null>(null);
-  const bettingEndsAtRef = useRef<number | null>(null);
+  const wsRef             = useRef<WebSocket | null>(null);
+  const rafRef            = useRef<number | null>(null);
+  const flyStartRef       = useRef<number | null>(null);
+  const countdownRef      = useRef<ReturnType<typeof setInterval> | null>(null);
+  const bettingEndsAtRef  = useRef<number | null>(null);
+  // Stable ref so canvas can read multiplier without re-subscribing
+  const elapsedRef        = useRef<number>(0);
 
   const startTicker = useCallback(() => {
-    if (tickRef.current) clearInterval(tickRef.current);
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
     flyStartRef.current = Date.now();
-    tickRef.current = setInterval(() => {
+
+    const tick = () => {
       const elapsed = Date.now() - (flyStartRef.current ?? Date.now());
+      elapsedRef.current = elapsed;
       setGameState(s => ({
         ...s,
         elapsedMs:  elapsed,
         multiplier: elapsedToMultiplier(elapsed),
       }));
-    }, 100);
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
   }, []);
 
   const stopTicker = useCallback(() => {
-    if (tickRef.current) { clearInterval(tickRef.current); tickRef.current = null; }
+    if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
     flyStartRef.current = null;
   }, []);
 
@@ -86,33 +85,6 @@ export function useGameSocket(token: string | null) {
     setCountdown(null);
   }, []);
 
-  const connect = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) return;
-
-    const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
-    const url      = token
-      ? `${protocol}://${location.host}/ws?token=${encodeURIComponent(token)}`
-      : `${protocol}://${location.host}/ws`;
-
-    const ws = new WebSocket(url);
-    wsRef.current = ws;
-
-    ws.onopen = () => setConnected(true);
-
-    ws.onmessage = (e) => {
-      try {
-        const { type, data } = JSON.parse(e.data) as { type: string; data: unknown };
-        handleServerEvent(type, data);
-      } catch {}
-    };
-
-    ws.onerror   = () => {};
-    ws.onclose   = () => {
-      setConnected(false);
-      setTimeout(() => connect(), 2000);
-    };
-  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
-
   const handleServerEvent = useCallback((type: string, data: unknown) => {
     switch (type) {
       case '1501': {
@@ -121,82 +93,60 @@ export function useGameSocket(token: string | null) {
         stopCountdown();
         setActiveBets([]);
         setGameState(s => ({
-          ...s,
-          id:         d.id,
-          roundId:    d.id,
-          phase:      'waiting',
-          multiplier: 1.0,
-          crashedAt:  null,
-          elapsedMs:  0,
-          playerCount: 0,
-          totalBetsCents: 0,
+          ...s, id: d.id, roundId: d.id, phase: 'waiting',
+          multiplier: 1.0, crashedAt: null, elapsedMs: 0, playerCount: 0, totalBetsCents: 0,
         }));
-        const waitMs = d.wait_ms ?? 2000;
-        startCountdown(Date.now() + waitMs + 5000);
+        startCountdown(Date.now() + (d.wait_ms ?? 2000) + 5000);
         break;
       }
-
       case 'betting_open': {
-        const d = data as { gameId?: number; bettingDurationMs?: number };
-        const duration = d.bettingDurationMs ?? 5000;
+        const d = data as { bettingDurationMs?: number };
         setGameState(s => ({ ...s, phase: 'betting' }));
-        startCountdown(Date.now() + duration);
+        startCountdown(Date.now() + (d.bettingDurationMs ?? 5000));
         break;
       }
-
       case '1502': {
         stopCountdown();
         startTicker();
         setGameState(s => ({ ...s, phase: 'flying', multiplier: 1.0, elapsedMs: 0 }));
         break;
       }
-
       case '1503': {
+        // Server tick — used to correct drift. We already interpolate at 60fps.
         const elapsed = Number(data);
-        setGameState(s => ({
-          ...s,
-          elapsedMs:  elapsed,
-          multiplier: elapsedToMultiplier(elapsed),
-        }));
+        if (flyStartRef.current) {
+          // Correct flyStart based on authoritative server time
+          flyStartRef.current = Date.now() - elapsed;
+        }
         break;
       }
-
       case '1504': {
         const d = data as { gameCrash: number; elapsed: number; gameHash: string };
         stopTicker();
         stopCountdown();
         setGameState(s => ({
-          ...s,
-          phase:     'crashed',
-          multiplier: d.gameCrash,
-          crashedAt:  d.gameCrash,
-          elapsedMs:  d.elapsed,
+          ...s, phase: 'crashed', multiplier: d.gameCrash,
+          crashedAt: d.gameCrash, elapsedMs: d.elapsed,
         }));
         break;
       }
-
       case '1507': {
         const d = data as { plays: Array<{ user_id: number; username: string; bet: number }> };
         setActiveBets(prev => {
           const next = [...prev];
           for (const p of d.plays) {
-            const existing = next.findIndex(b => b.userId === p.user_id);
+            const idx = next.findIndex(b => b.userId === p.user_id);
             const bet: ActiveBet = {
-              userId:        p.user_id,
-              username:      p.username,
-              amountCents:   Math.round(p.bet * 100),
-              cashedOutAt:   null,
-              autoCashoutAt: null,
+              userId: p.user_id, username: p.username,
+              amountCents: Math.round(p.bet * 100), cashedOutAt: null, autoCashoutAt: null,
             };
-            if (existing >= 0) next[existing] = bet;
-            else next.push(bet);
+            if (idx >= 0) next[idx] = bet; else next.push(bet);
           }
           return next;
         });
         setGameState(s => ({ ...s, playerCount: s.playerCount + d.plays.length }));
         break;
       }
-
       case '1505': {
         const d = data as Record<string, unknown>;
         for (const key of Object.keys(d)) {
@@ -204,28 +154,20 @@ export function useGameSocket(token: string | null) {
           const userId = parseInt(key, 10);
           const inner  = d[key] as Record<string, number>;
           const mult   = Object.values(inner)[0] ?? 0;
-          setActiveBets(prev => prev.map(b =>
-            b.userId === userId ? { ...b, cashedOutAt: Math.round(mult * 100) } : b
-          ));
+          setActiveBets(prev =>
+            prev.map(b => b.userId === userId ? { ...b, cashedOutAt: Math.round(mult * 100) } : b)
+          );
         }
         break;
       }
-
       case 'game_state': {
-        const d = data as {
-          id: number; state: string; elapsedMs: number;
-          playerCount: number; totalBetsCents: number;
-        };
+        const d = data as { id: number; state: string; elapsedMs: number; playerCount: number; totalBetsCents: number };
         const phase = d.state as GamePhase;
         setGameState(s => ({
-          ...s,
-          id:             d.id,
-          roundId:        d.id,
-          phase,
-          elapsedMs:      d.elapsedMs,
-          multiplier:     phase === 'flying' ? elapsedToMultiplier(d.elapsedMs) : 1.0,
-          playerCount:    d.playerCount,
-          totalBetsCents: d.totalBetsCents,
+          ...s, id: d.id, roundId: d.id, phase,
+          elapsedMs: d.elapsedMs,
+          multiplier: phase === 'flying' ? elapsedToMultiplier(d.elapsedMs) : 1.0,
+          playerCount: d.playerCount, totalBetsCents: d.totalBetsCents,
         }));
         if (phase === 'flying') {
           flyStartRef.current = Date.now() - d.elapsedMs;
@@ -235,6 +177,28 @@ export function useGameSocket(token: string | null) {
       }
     }
   }, [startTicker, stopTicker, startCountdown, stopCountdown]);
+
+  const connect = useCallback(() => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) return;
+    const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
+    const url = token
+      ? `${protocol}://${location.host}/ws?token=${encodeURIComponent(token)}`
+      : `${protocol}://${location.host}/ws`;
+    const ws = new WebSocket(url);
+    wsRef.current = ws;
+    ws.onopen  = () => setConnected(true);
+    ws.onmessage = (e) => {
+      try {
+        const { type, data } = JSON.parse(e.data) as { type: string; data: unknown };
+        handleServerEvent(type, data);
+      } catch {}
+    };
+    ws.onerror = () => {};
+    ws.onclose = () => {
+      setConnected(false);
+      setTimeout(() => connect(), 2000);
+    };
+  }, [token, handleServerEvent]);
 
   useEffect(() => {
     connect();
@@ -251,5 +215,5 @@ export function useGameSocket(token: string | null) {
     }
   }, []);
 
-  return { gameState, activeBets, connected, send, countdown };
+  return { gameState, activeBets, connected, send, countdown, flyStartRef, elapsedRef };
 }

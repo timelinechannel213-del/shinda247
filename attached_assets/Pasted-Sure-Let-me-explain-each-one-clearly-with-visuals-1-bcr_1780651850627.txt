@@ -1,0 +1,383 @@
+Sure. Let me explain each one clearly with visuals.
+
+---
+
+## 1. ✅ bcrypt for Passwords
+
+### What's wrong now
+```
+User types: "mypassword123"
+SHA256 produces: "9a8b7c6d..."  ← same hash EVERY time
+Hacker has GPU: cracks in 2 seconds ❌
+```
+
+### What bcrypt does
+```
+User types: "mypassword123"
+bcrypt produces: "$2b$10$randomsalt...longstring"  
+              ↑ random salt added every time
+              ↑ deliberately SLOW (0.1 seconds per attempt)
+Hacker has GPU: takes 100+ years to crack ✅
+```
+
+### Visual difference
+```
+SHA256 (WRONG):
+password → [SHA256] → abc123def456  ← fast, predictable, crackable
+
+bcrypt (CORRECT):
+password → [bcrypt + random salt] → $2b$10$Xk9...mQ2  ← slow, unique, safe
+password → [bcrypt + random salt] → $2b$10$Rp7...nL4  ← same password,
+                                                          different hash!
+```
+
+---
+
+## 2. ✅ 2^52 RNG Fix
+
+### What's wrong now
+```
+Using 2^32 (4 billion values):
+h = parseInt(hash.slice(0, 8), 16)  ← only 8 hex chars = 32 bits
+
+Distribution produced:
+1.00x  ████████████████████  ~30% too many low crashes ❌
+2.00x  ████████
+5.00x  ████
+10.00x ██
+```
+
+### What 2^52 produces
+```
+Using 2^52 (4 quadrillion values):
+h = parseInt(hash.slice(0, 13), 16)  ← 13 hex chars = 52 bits
+
+Distribution produced:
+1.00x  ███  ~3%   instant bust ✅
+2.00x  ████████████████  ~47% below 2x ✅
+5.00x  ████████  ~33% between 2-10x ✅
+10.00x ████  ~10% above 10x ✅
+100x   █  ~1% massive wins ✅
+```
+
+---
+
+## 3. Exponential Curve Canvas
+
+### What it looks like now
+```
+┌─────────────────────────────────┐
+│  * * * * * * * (stars)          │
+│                                 │
+│         2.35x                   │  ← just a number floating
+│                                 │
+│    [rocket floating]            │
+│                                 │
+│▓▓▓▓▓▓▓▓▓▓▓▓▓▓ (mountains)      │
+└─────────────────────────────────┘
+```
+
+### What it should look like
+```
+┌─────────────────────────────────┐
+│  * * * * * *                    │
+│                      🚀         │  ← rocket on the curve
+│                   /             │
+│               /                 │
+│  2.35x    /                     │  ← multiplier label
+│         /                       │
+│       /    ← glowing curve      │
+│     /       drawn in real time  │
+│   /                             │
+│  /______________________________│
+│  0s    5s   10s   15s   20s     │
+└─────────────────────────────────┘
+```
+
+### How it's drawn
+```
+Every frame (60fps):
+  1. Clear canvas
+  2. For each point from x=0 to x=now:
+       y = e^(x / 35000)     ← exponential formula
+       draw point on canvas
+  3. Connect all points → smooth glowing curve
+  4. Place rocket at the tip of the curve
+  5. Draw thruster flame behind rocket
+```
+
+### The math visualized
+```
+Time:       0s    5s    10s   20s   40s   80s
+Multiplier: 1.00x 1.15x 1.33x 1.77x 3.13x 9.80x
+
+Graph:
+10x │                              *
+    │                           *
+ 5x │                        *
+    │                    *
+ 2x │               *
+    │          *
+ 1x │*  *  *
+    └──────────────────────────────
+    0s  10s  20s  30s  40s  50s  80s
+```
+
+---
+
+## 4. 60fps Smooth Interpolation
+
+### What happens now (150ms ticks)
+```
+Server sends tick every 150ms:
+
+Time:  0ms    150ms   300ms   450ms
+Value: 1.00x  1.12x   1.25x   1.40x
+              ↑       ↑       ↑
+              JUMP    JUMP    JUMP  ← looks choppy ❌
+```
+
+### What 60fps interpolation does
+```
+Server still sends every 150ms BUT
+client fills in the gaps at 60fps:
+
+Time:  0ms 16ms 32ms 48ms ... 150ms
+Value: 1.00 1.01 1.02 1.03 ... 1.12  ← smooth ✅
+
+How:
+  lastValue = 1.00   (from server)
+  nextValue = 1.12   (predicted)
+  
+  every frame:
+    elapsed = now - lastTickTime
+    progress = elapsed / 150        ← 0.0 to 1.0
+    displayed = lastValue + (nextValue - lastValue) * progress
+```
+
+### Visual difference
+```
+WITHOUT interpolation (now):
+1.00 ──────────────── 1.12 ──────────────── 1.25
+     ← 150ms gap →        ← 150ms gap →
+
+WITH interpolation (target):
+1.00─1.01─1.02─1.03─...─1.12─1.13─1.14─...─1.25
+     every 16ms (60fps)
+```
+
+---
+
+## 5. Cash Out Flash Animation
+
+### What happens now
+```
+Click CASH OUT
+→ button shows "CASHING OUT..."
+→ toast appears "Won KES 235"
+→ nothing else                    ← flat, no excitement ❌
+```
+
+### What should happen
+```
+Click CASH OUT
+→ 
+  Step 1 (0ms):    Whole canvas flashes WHITE
+  Step 2 (50ms):   Canvas turns bright GREEN
+  Step 3 (100ms):  Multiplier freezes, turns green
+                   Big "WIN!" text appears
+  Step 4 (200ms):  Payout amount flies up from center
+                   "+KES 235.00"  ↑↑↑
+  Step 5 (500ms):  Green fades back to normal
+  Step 6 (1000ms): Everything returns to normal
+```
+
+### Visual
+```
+BEFORE cashout:          AFTER cashout:
+┌───────────────┐        ┌───────────────┐
+│  * * * *      │        │░░░░░░░░░░░░░░░│  ← green flash
+│               │   →    │  ✅  WIN!     │
+│    2.35x      │        │   2.35x  🟢  │  ← frozen green
+│               │        │  +KES 235.00  │  ← flies upward
+│   🚀          │        │               │
+└───────────────┘        └───────────────┘
+```
+
+---
+
+## 6. Mobile Responsive Layout
+
+### What it looks like now on mobile
+```
+Phone screen (375px wide):
+
+┌─────────────────┐
+│[sidebar 256px][m│  ← sidebar takes most of screen
+│ain content cut o│  ← main content cut off
+│ff on right    ]  │
+│                  │
+│[right sidebar hi│  ← right sidebar hidden but
+│dden but takes sp│     still takes space
+└──────────────────┘
+```
+
+### What it should look like on mobile
+```
+Phone screen (375px wide):
+
+┌─────────────────┐
+│ 🔥SHINDA  KES450│  ← compact topbar
+├─────────────────┤
+│                 │
+│   2.35x         │  ← full width canvas
+│      🚀         │
+│                 │
+├─────────────────┤
+│ Bet: [500  ][▲] │  ← stacked controls
+│ Auto: [4.3x]    │
+│ [  PLACE BET  ] │  ← full width button
+├─────────────────┤
+│[History][MyBets]│  ← tabs
+│ #234  2.35x ... │
+└─────────────────┘
+│ 🏠  🔔  📜  👤  │  ← bottom nav bar
+└─────────────────┘
+```
+
+### Breakpoints
+```
+Desktop  (>1280px): sidebar + main + right sidebar
+Tablet   (768-1280px): main + right sidebar (no left sidebar)
+Mobile   (<768px): full width, bottom nav, no sidebars
+```
+
+---
+
+## 7. M-Pesa Deposit Button
+
+### What it looks like now
+```
+Topbar:
+┌────────────────────────────────────────┐
+│ [avatar] JohnDoe  💰KES 450.00        │  ← no deposit button visible
+│                              [Logout]  │
+└────────────────────────────────────────┘
+```
+
+### What it should look like
+```
+Topbar:
+┌────────────────────────────────────────┐
+│ [avatar] JohnDoe  💰KES 450.00        │
+│                  [+ DEPOSIT] [Logout]  │
+└────────────────────────────────────────┘
+                   ↑
+              Clicking opens:
+┌──────────────────────────┐
+│  💚 Deposit via M-Pesa   │
+│                          │
+│  Amount (KES)            │
+│  [100              ]     │
+│  Min: KES 10             │
+│                          │
+│  Phone Number            │
+│  [254712345678     ]     │
+│                          │
+│  [ PAY WITH M-PESA ]     │
+│                          │
+│  You'll get an STK push  │
+│  on your phone           │
+└──────────────────────────┘
+```
+
+### Flow
+```
+User clicks DEPOSIT
+→ Modal opens
+→ User enters amount + phone
+→ Clicks PAY WITH M-PESA
+→ Server calls Daraja STK Push API
+→ User's phone vibrates
+→ User enters M-Pesa PIN
+→ Server receives callback
+→ Wallet credited
+→ Balance updates in topbar
+```
+
+---
+
+## 8. My Bets Tab
+
+### What History panel looks like now
+```
+┌─────────────────────────────────────┐
+│ [History] [Customer Care] [Refer]   │
+├─────────────────────────────────────┤
+│ #    Hash              Crashed  Time│
+│ 234  bd96b851...       2.35x   12:30│
+│ 233  da372fdc...       1.00x   12:28│
+│ 232  ae891bc2...       5.67x   12:25│
+└─────────────────────────────────────┘
+```
+
+### What it should look like
+```
+┌─────────────────────────────────────┐
+│ [History] [My Bets] [Care] [Refer]  │
+├─────────────────────────────────────┤
+
+My Bets tab:
+│ Round  Bet      Cashout  Profit     │
+│ #234   KES 500  2.35x    +KES 675  🟢│
+│ #233   KES 200  LOST     -KES 200  🔴│
+│ #232   KES 100  5.67x    +KES 467  🟢│
+│ #231   KES 300  LOST     -KES 300  🔴│
+├─────────────────────────────────────┤
+│ Total bet:    KES 1,100             │
+│ Total won:    KES 1,142             │
+│ Net P&L:      +KES 42   🟢          │
+└─────────────────────────────────────┘
+```
+
+### What the API needs
+```
+GET /api/game/my-bets?limit=20
+
+Returns:
+[
+  {
+    roundId: 234,
+    amountCents: 50000,
+    cashedOutAt: 235,      ← multiplier x100
+    payoutCents: 117500,
+    state: "cashed_out"
+  },
+  {
+    roundId: 233,
+    amountCents: 20000,
+    cashedOutAt: null,
+    payoutCents: 0,
+    state: "lost"
+  }
+]
+```
+
+---
+
+## Summary
+
+| # | Feature | Complexity | Files Changed |
+|---|---------|------------|---------------|
+| 1 | bcrypt passwords | Easy | `auth.ts` |
+| 2 | 2^52 RNG | Easy | `rng.service.ts` |
+| 3 | Curve canvas | Hard | `game-canvas.tsx` |
+| 4 | 60fps interpolation | Medium | `use-game-socket.ts`, `game-canvas.tsx` |
+| 5 | Cashout flash | Medium | `game-canvas.tsx`, `game-controls.tsx` |
+| 6 | Mobile layout | Medium | `home.tsx`, `sidebar.tsx`, `topbar.tsx`, `index.css` |
+| 7 | Deposit button | Medium | `topbar.tsx`, new `deposit-modal.tsx`, `mpesa.ts` route |
+| 8 | My Bets tab | Easy | `history-panel.tsx`, `game.ts` route |
+
+---
+
+Want me to generate all these files now, starting with the canvas since that's the hardest and most impactful?

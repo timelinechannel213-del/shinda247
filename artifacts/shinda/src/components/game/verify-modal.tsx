@@ -12,12 +12,13 @@ interface VerifyModalProps {
   onClose: () => void;
 }
 
+// Must match server's computeCrashPoint — uses 2^52 (13 hex chars)
 function verifyCrashPoint(hash: string, crashX100: number): boolean {
-  const MAX = 2 ** 32;
-  const h = parseInt(hash.substring(0, 8), 16);
+  const E = 2 ** 52;
+  const h = parseInt(hash.substring(0, 13), 16);
   if (h % 33 === 0) return crashX100 === 100;
-  const crashFloat = Math.floor((100 * MAX - h) / (MAX - h)) / 100;
-  const computed = Math.floor(Math.max(1.00, crashFloat) * 100);
+  const crashFloat = Math.floor((100 * E - h) / (E - h)) / 100;
+  const computed   = Math.floor(Math.max(1.00, crashFloat) * 100);
   return computed === crashX100;
 }
 
@@ -27,10 +28,10 @@ async function sha256Hex(str: string): Promise<string> {
 }
 
 export function VerifyModal({ round, onClose }: VerifyModalProps) {
-  const [chainValid, setChainValid]   = useState<boolean | null>(null);
-  const [copied, setCopied]           = useState<string | null>(null);
-  const [customHash, setCustomHash]   = useState('');
-  const [customCrash, setCustomCrash] = useState('');
+  const [chainValid, setChainValid]     = useState<boolean | null>(null);
+  const [copied, setCopied]             = useState<string | null>(null);
+  const [customHash, setCustomHash]     = useState('');
+  const [customCrash, setCustomCrash]   = useState('');
   const [customResult, setCustomResult] = useState<boolean | null>(null);
 
   const crashMultiplier = round?.crashPoint != null ? round.crashPoint / 100 : null;
@@ -38,9 +39,7 @@ export function VerifyModal({ round, onClose }: VerifyModalProps) {
 
   useEffect(() => {
     if (!round?.hash || !round?.prevHash) { setChainValid(null); return; }
-    sha256Hex(round.hash).then(computed => {
-      setChainValid(computed === round.prevHash);
-    });
+    sha256Hex(round.hash).then(computed => setChainValid(computed === round.prevHash));
   }, [round?.hash, round?.prevHash]);
 
   const copy = (text: string, key: string) => {
@@ -59,11 +58,8 @@ export function VerifyModal({ round, onClose }: VerifyModalProps) {
   if (!round) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={onClose}>
-      <div
-        className="relative w-full max-w-lg bg-card border border-border/60 rounded-2xl shadow-2xl p-6 space-y-5"
-        onClick={e => e.stopPropagation()}
-      >
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm" onClick={onClose}>
+      <div className="relative w-full max-w-lg bg-card border border-border/60 rounded-2xl shadow-2xl p-6 space-y-5" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Shield className="w-5 h-5 text-primary" />
@@ -75,46 +71,32 @@ export function VerifyModal({ round, onClose }: VerifyModalProps) {
         </div>
 
         <div className="space-y-3">
-          <div className="space-y-1">
-            <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Game Hash</label>
-            <div className="flex items-center gap-2 bg-secondary/40 border border-border/40 rounded-xl px-3 py-2">
-              <span className="font-mono text-xs text-foreground/80 flex-1 truncate">{round.hash}</span>
-              <button onClick={() => copy(round.hash, 'hash')} className="shrink-0 text-muted-foreground hover:text-primary transition-colors">
-                {copied === 'hash' ? <Check className="w-4 h-4 text-success" /> : <Copy className="w-4 h-4" />}
-              </button>
-            </div>
-          </div>
-
-          {round.prevHash && (
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                Prev Hash <span className="text-muted-foreground/60 normal-case font-normal">(SHA256 of this hash)</span>
-              </label>
-              <div className="flex items-center gap-2 bg-secondary/40 border border-border/40 rounded-xl px-3 py-2">
-                <span className="font-mono text-xs text-foreground/80 flex-1 truncate">{round.prevHash}</span>
-                <button onClick={() => copy(round.prevHash!, 'prev')} className="shrink-0 text-muted-foreground hover:text-primary transition-colors">
-                  {copied === 'prev' ? <Check className="w-4 h-4 text-success" /> : <Copy className="w-4 h-4" />}
-                </button>
+          {[['hash', round.hash, 'Game Hash'], ['prev', round.prevHash, 'Prev Hash (SHA256 of this hash)']].map(([key, value, label]) => (
+            value ? (
+              <div key={key as string} className="space-y-1">
+                <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{label as string}</label>
+                <div className="flex items-center gap-2 bg-secondary/40 border border-border/40 rounded-xl px-3 py-2">
+                  <span className="font-mono text-xs text-foreground/80 flex-1 truncate">{value as string}</span>
+                  <button onClick={() => copy(value as string, key as string)} className="shrink-0 text-muted-foreground hover:text-primary transition-colors">
+                    {copied === key ? <Check className="w-4 h-4 text-success" /> : <Copy className="w-4 h-4" />}
+                  </button>
+                </div>
               </div>
-            </div>
-          )}
+            ) : null
+          ))}
         </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-secondary/30 border border-border/30 rounded-xl p-3 space-y-1">
             <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Crash Point</div>
-            <div className="font-mono font-black text-2xl">
-              {crashMultiplier != null ? `${crashMultiplier.toFixed(2)}x` : '—'}
-            </div>
+            <div className="font-mono font-black text-2xl">{crashMultiplier != null ? `${crashMultiplier.toFixed(2)}x` : '—'}</div>
           </div>
-          <div className={cn(
-            'border rounded-xl p-3 space-y-1',
+          <div className={cn('border rounded-xl p-3 space-y-1',
             crashIsValid === null ? 'bg-secondary/30 border-border/30' :
             crashIsValid ? 'bg-success/10 border-success/30' : 'bg-destructive/10 border-destructive/30'
           )}>
             <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Crash Verified</div>
-            <div className={cn(
-              'font-black text-2xl',
+            <div className={cn('font-black text-2xl',
               crashIsValid === null ? 'text-muted-foreground' :
               crashIsValid ? 'text-success' : 'text-destructive'
             )}>
@@ -122,14 +104,12 @@ export function VerifyModal({ round, onClose }: VerifyModalProps) {
             </div>
           </div>
           {round.prevHash && (
-            <div className={cn(
-              'col-span-2 border rounded-xl p-3 space-y-1',
+            <div className={cn('col-span-2 border rounded-xl p-3',
               chainValid === null ? 'bg-secondary/30 border-border/30' :
               chainValid ? 'bg-success/10 border-success/30' : 'bg-destructive/10 border-destructive/30'
             )}>
-              <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Chain Link (SHA256)</div>
-              <div className={cn(
-                'font-bold text-sm',
+              <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">Chain Link (SHA256)</div>
+              <div className={cn('font-bold text-sm',
                 chainValid === null ? 'text-muted-foreground' :
                 chainValid ? 'text-success' : 'text-destructive'
               )}>
@@ -140,11 +120,11 @@ export function VerifyModal({ round, onClose }: VerifyModalProps) {
         </div>
 
         <div className="border-t border-border/30 pt-4 space-y-3">
-          <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Verify Manually</p>
+          <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Verify Any Round Manually</p>
           <div className="flex gap-2">
             <input
               className="flex-1 bg-background border border-border/50 rounded-lg px-3 py-2 text-xs font-mono placeholder:text-muted-foreground/40 focus:outline-none focus:border-primary/50"
-              placeholder="Paste any game hash..."
+              placeholder="Paste game hash (64 hex chars)..."
               value={customHash}
               onChange={e => { setCustomHash(e.target.value); setCustomResult(null); }}
             />
@@ -158,28 +138,25 @@ export function VerifyModal({ round, onClose }: VerifyModalProps) {
               onClick={handleManualVerify}
               className="px-3 py-2 bg-primary/20 hover:bg-primary/30 border border-primary/30 rounded-lg text-xs font-bold text-primary transition-colors"
             >
-              Verify
+              Check
             </button>
           </div>
           {customResult !== null && (
-            <div className={cn(
-              'text-sm font-bold px-3 py-2 rounded-lg',
-              customResult ? 'bg-success/10 text-success border border-success/30' : 'bg-destructive/10 text-destructive border border-destructive/30'
+            <div className={cn('text-sm font-bold px-3 py-2 rounded-lg',
+              customResult
+                ? 'bg-success/10 text-success border border-success/30'
+                : 'bg-destructive/10 text-destructive border border-destructive/30'
             )}>
-              {customResult ? '✅ Hash verifies correctly — this round is provably fair' : '❌ Hash mismatch — crash point does not match'}
+              {customResult
+                ? '✅ Verifies correctly — this round is provably fair'
+                : '❌ Mismatch — crash point does not match this hash'}
             </div>
           )}
         </div>
 
-        <a
-          href="https://github.com/timelinechannel213-del/shinda247"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-2 text-xs text-muted-foreground hover:text-primary transition-colors"
-        >
-          <ExternalLink className="w-3 h-3" />
-          View source code to verify the algorithm yourself
-        </a>
+        <p className="text-xs text-muted-foreground">
+          Formula: <span className="font-mono">E=2^52, h=parseInt(hash[0..12],16), crash=floor((100·E−h)/(E−h))/100</span>
+        </p>
       </div>
     </div>
   );

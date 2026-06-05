@@ -1,6 +1,6 @@
 import { Router, type IRouter } from 'express';
 import { db } from '@workspace/db';
-import { wallets, transactions } from '@workspace/db';
+import { wallets, transactions, bets, games } from '@workspace/db';
 import {
   getCurrentGame,
   getActiveBets,
@@ -169,6 +169,36 @@ router.get('/transactions', requireAuth, async (req: AuthRequest, res) => {
     .limit(limit);
 
   res.json(txns);
+});
+
+router.get('/game/my-bets', requireAuth, async (req: AuthRequest, res) => {
+  const limit  = Math.min(100, Math.max(1, parseInt(String(req.query.limit ?? '30'), 10)));
+  const userId = req.userId!;
+
+  const rows = await db
+    .select({
+      id:          bets.id,
+      gameId:      bets.gameId,
+      amountCents: bets.amountCents,
+      cashedOutAt: bets.cashedOutAt,
+      payoutCents: bets.payoutCents,
+      state:       bets.state,
+      createdAt:   bets.createdAt,
+    })
+    .from(bets)
+    .where(eq(bets.userId, userId))
+    .orderBy(desc(bets.createdAt))
+    .limit(limit);
+
+  res.json(rows.map(r => ({
+    id:          r.id,
+    gameId:      r.gameId,
+    amountCents: Number(r.amountCents),
+    cashedOutAt: r.cashedOutAt != null ? Number(r.cashedOutAt) : null,
+    payoutCents: r.payoutCents != null ? Number(r.payoutCents) : null,
+    state:       r.state,
+    createdAt:   r.createdAt.toISOString(),
+  })));
 });
 
 export default router;

@@ -6,29 +6,35 @@ import { useAuth }  from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import type { GameState, ActiveBet } from '@/hooks/use-game-socket';
 
+interface WinFlash {
+  payoutCents: number;
+  multiplier: number;
+}
+
 interface GameControlsProps {
   gameState:   GameState;
   activeBets:  ActiveBet[];
   connected:   boolean;
   send:        (type: string, data?: unknown) => void;
+  onWin?:      (flash: WinFlash) => void;
 }
 
-export function GameControls({ gameState, activeBets, connected, send }: GameControlsProps) {
+export function GameControls({ gameState, activeBets, connected, send, onWin }: GameControlsProps) {
   const { token, userId, refreshBalance } = useAuth();
   const { toast } = useToast();
 
-  const [amount, setAmount]   = useState<string>('500');
+  const [amount, setAmount]     = useState<string>('500');
   const [autoCash, setAutoCash] = useState<string>('4.3');
-  const [pending, setPending] = useState(false);
+  const [pending, setPending]   = useState(false);
 
   const prevRoundId = useRef<number>(0);
 
   const { phase, multiplier, roundId, id } = gameState;
 
-  const myBet = userId != null ? activeBets.find(b => b.userId === userId) : null;
-  const hasBet     = !!myBet;
-  const cashedOut  = myBet?.cashedOutAt !== null && myBet?.cashedOutAt !== undefined;
-  const canBet     = !hasBet && (phase === 'waiting' || phase === 'betting') && connected;
+  const myBet    = userId != null ? activeBets.find(b => b.userId === userId) : null;
+  const hasBet   = !!myBet;
+  const cashedOut = myBet?.cashedOutAt !== null && myBet?.cashedOutAt !== undefined;
+  const canBet    = !hasBet && (phase === 'waiting' || phase === 'betting') && connected;
   const canCashOut = hasBet && !cashedOut && phase === 'flying';
 
   useEffect(() => {
@@ -39,30 +45,20 @@ export function GameControls({ gameState, activeBets, connected, send }: GameCon
 
   const handleBet = async () => {
     if (!token) { toast({ title: 'Login required', variant: 'destructive' }); return; }
-    const amountCents = Math.round(parseFloat(amount) * 100);
-    const autoCashoutAt = parseFloat(autoCash) > 0
-      ? Math.round(parseFloat(autoCash) * 100)
-      : null;
+    const amountCents   = Math.round(parseFloat(amount) * 100);
+    const autoCashoutAt = parseFloat(autoCash) > 0 ? Math.round(parseFloat(autoCash) * 100) : null;
 
-    if (amountCents < 100) {
-      toast({ title: 'Minimum bet is KES 1', variant: 'destructive' }); return;
-    }
+    if (amountCents < 100) { toast({ title: 'Minimum bet is KES 1', variant: 'destructive' }); return; }
 
     setPending(true);
     try {
-      const res = await fetch('/api/game/bet', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization:  `Bearer ${token}`,
-        },
-        body: JSON.stringify({ amountCents, autoCashoutAt }),
+      const res  = await fetch('/api/game/bet', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body:    JSON.stringify({ amountCents, autoCashoutAt }),
       });
       const data = await res.json();
-      if (!res.ok) {
-        toast({ title: data.error ?? 'Bet failed', variant: 'destructive' });
-        return;
-      }
+      if (!res.ok) { toast({ title: data.error ?? 'Bet failed', variant: 'destructive' }); return; }
       toast({ title: 'Bet placed!', description: `KES ${amount}` });
       refreshBalance();
     } catch {
@@ -74,24 +70,19 @@ export function GameControls({ gameState, activeBets, connected, send }: GameCon
 
   const handleCashOut = async () => {
     if (!token) return;
+    const cashoutMultiplier = multiplier;
     setPending(true);
     try {
-      const res = await fetch('/api/game/cashout', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization:  `Bearer ${token}`,
-        },
+      const res  = await fetch('/api/game/cashout', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
-      if (!res.ok) {
-        toast({ title: data.error ?? 'Cashout failed', variant: 'destructive' });
-        return;
-      }
-      const amountKes = parseFloat(amount);
+      if (!res.ok) { toast({ title: data.error ?? 'Cashout failed', variant: 'destructive' }); return; }
+      onWin?.({ payoutCents: data.payoutCents, multiplier: cashoutMultiplier });
       toast({
-        title:       'Cashed Out!',
-        description: `Won KES ${(data.payoutCents / 100).toFixed(2)} at ${multiplier.toFixed(2)}x`,
+        title:       '🎉 Cashed Out!',
+        description: `Won KES ${(data.payoutCents / 100).toFixed(2)} at ${cashoutMultiplier.toFixed(2)}x`,
       });
       refreshBalance();
     } catch {
@@ -107,7 +98,6 @@ export function GameControls({ gameState, activeBets, connected, send }: GameCon
 
   return (
     <div className="w-full bg-card rounded-2xl border border-border/50 p-4 md:p-6 shadow-xl flex flex-col md:flex-row gap-4 lg:gap-8 shrink-0">
-
       <div className="flex-1 flex gap-4">
         <div className="flex-1 space-y-2">
           <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider ml-1 flex items-center gap-1">
@@ -146,7 +136,6 @@ export function GameControls({ gameState, activeBets, connected, send }: GameCon
             disabled={hasBet || !canBet}
             className="text-lg h-14 bg-background"
           />
-
           <div className="flex items-center gap-1.5 text-xs">
             {connected
               ? <><Wifi className="w-3 h-3 text-success" /><span className="text-success">Live</span></>
@@ -158,22 +147,11 @@ export function GameControls({ gameState, activeBets, connected, send }: GameCon
 
       <div className="w-full md:w-[300px] flex items-end">
         {canCashOut ? (
-          <Button
-            size="xl"
-            variant="success"
-            className="w-full h-20 text-2xl"
-            onClick={handleCashOut}
-            disabled={pending}
-          >
-            {pending ? 'CASHING OUT...' : `CASH OUT KES ${cashoutValue}`}
+          <Button size="xl" variant="success" className="w-full h-20 text-xl" onClick={handleCashOut} disabled={pending}>
+            {pending ? 'CASHING OUT...' : `CASH OUT\nKES ${cashoutValue}`}
           </Button>
         ) : phase === 'waiting' || phase === 'betting' ? (
-          <Button
-            size="xl"
-            className="w-full h-20 text-2xl"
-            onClick={handleBet}
-            disabled={hasBet || pending || !canBet}
-          >
+          <Button size="xl" className="w-full h-20 text-2xl" onClick={handleBet} disabled={hasBet || pending || !canBet}>
             {pending           ? 'PLACING BET...'
              : hasBet && cashedOut ? 'CASHED OUT ✓'
              : hasBet           ? 'BET PLACED — WAIT'
@@ -181,22 +159,11 @@ export function GameControls({ gameState, activeBets, connected, send }: GameCon
              : 'WAITING...'}
           </Button>
         ) : phase === 'flying' && hasBet ? (
-          <Button
-            size="xl"
-            variant="success"
-            className="w-full h-20 text-2xl"
-            onClick={handleCashOut}
-            disabled={pending || cashedOut}
-          >
+          <Button size="xl" variant="success" className="w-full h-20 text-xl" onClick={handleCashOut} disabled={pending || cashedOut}>
             {cashedOut ? 'CASHED OUT ✓' : pending ? 'CASHING OUT...' : `CASH OUT KES ${cashoutValue}`}
           </Button>
         ) : (
-          <Button
-            size="xl"
-            variant="secondary"
-            className="w-full h-20 text-xl text-muted-foreground"
-            disabled
-          >
+          <Button size="xl" variant="secondary" className="w-full h-20 text-xl text-muted-foreground" disabled>
             {phase === 'crashed' ? 'ROUND ENDED' : 'WAIT FOR BETTING'}
           </Button>
         )}
