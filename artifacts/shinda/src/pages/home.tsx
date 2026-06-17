@@ -16,7 +16,7 @@ interface WinFlash {
 
 export default function Home() {
   const { token } = useAuth();
-  const { gameState, activeBets, connected, send, countdown } = useGameSocket(token);
+  const { gameState, activeBets, connected, send, countdown, elapsedRef } = useGameSocket(token);
   const [winFlash, setWinFlash] = useState<WinFlash | null>(null);
 
   const handleWin = (flash: WinFlash) => {
@@ -33,7 +33,7 @@ export default function Home() {
 
         <main className="flex-1 overflow-y-auto p-3 md:p-6 space-y-4 md:space-y-6 pb-20 md:pb-6">
           <div className="flex flex-col gap-4 md:gap-6 max-w-5xl mx-auto w-full">
-            <GameCanvas gameState={gameState} countdown={countdown} winFlash={winFlash} />
+            <GameCanvas gameState={gameState} countdown={countdown} winFlash={winFlash} elapsedRef={elapsedRef} />
 
             <GameControls
               gameState={gameState}
@@ -41,6 +41,7 @@ export default function Home() {
               connected={connected}
               send={send}
               onWin={handleWin}
+              elapsedRef={elapsedRef}
             />
 
             <HistoryPanel />

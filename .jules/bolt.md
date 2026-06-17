@@ -1,0 +1,3 @@
+## 2025-05-14 - Decoupling High-Frequency Updates from React State
+**Learning:** Bypassing React state for 60fps updates (like a game loop) significantly improves performance by reducing re-renders. However, any unrelated React re-render will reset the DOM to the declarative JSX state, which holds stale values if state wasn't updated. This causes "flickering" or "snapping" where the UI jumps back to an older state before the next animation frame.
+**Action:** Use `useLayoutEffect` to immediately re-apply manual DOM updates from refs after every React render. This ensures the DOM remains in sync with the high-frequency loop even when React re-renders for other reasons.
