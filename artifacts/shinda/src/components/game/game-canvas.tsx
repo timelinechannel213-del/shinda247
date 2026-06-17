@@ -1,7 +1,7 @@
-import { useEffect, useRef, useCallback, useMemo, useState } from 'react';
+import { useEffect, useRef, useCallback, useMemo, useState, useLayoutEffect } from 'react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
-import type { GameState } from '@/hooks/use-game-socket';
+import { type GameState, elapsedToMultiplier } from '@/hooks/use-game-socket';
 
 const K = 35_000;
 const exp = (ms: number) => Math.exp(ms / K);
@@ -15,14 +15,17 @@ interface GameCanvasProps {
   gameState: GameState;
   countdown?: number | null;
   winFlash?: WinFlash | null;
+  elapsedRef: React.RefObject<number>;
 }
 
-export function GameCanvas({ gameState, countdown, winFlash }: GameCanvasProps) {
+export function GameCanvas({ gameState, countdown, winFlash, elapsedRef }: GameCanvasProps) {
   const canvasRef    = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const pointsRef    = useRef<Array<{ t: number; m: number }>>([]);
   const flyStartRef  = useRef<number | null>(null);
   const rafRef       = useRef<number | null>(null);
+  const multiplierRef = useRef<HTMLSpanElement>(null);
+  const rocketRef     = useRef<HTMLDivElement>(null);
 
   const [rocketPos, setRocketPos]     = useState({ x: -100, y: -100, angle: -45 });
   const [flashVisible, setFlashVisible] = useState(false);
@@ -41,7 +44,7 @@ export function GameCanvas({ gameState, countdown, winFlash }: GameCanvasProps) 
     return () => clearTimeout(t);
   }, [winFlash]);
 
-  const drawFrame = useCallback(() => {
+  const drawFrame = useCallback((manualMultiplier?: number) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -50,6 +53,11 @@ export function GameCanvas({ gameState, countdown, winFlash }: GameCanvasProps) 
     const W   = canvas.width;
     const H   = canvas.height;
     const pts = pointsRef.current;
+
+    // BOLT OPTIMIZATION: Direct DOM manipulation for multiplier
+    if (multiplierRef.current && manualMultiplier !== undefined) {
+      multiplierRef.current.textContent = `${manualMultiplier.toFixed(2)}x`;
+    }
 
     ctx.clearRect(0, 0, W, H);
     if (pts.length < 2) return;
@@ -102,7 +110,19 @@ export function GameCanvas({ gameState, countdown, winFlash }: GameCanvasProps) 
       const dy = toY(lastPt.m) - toY(prev.m);
       angle = Math.atan2(dy, dx) * (180 / Math.PI);
     }
-    setRocketPos({ x: rx, y: ry, angle });
+
+    // BOLT OPTIMIZATION: Direct DOM manipulation for rocket position
+    if (rocketRef.current) {
+      rocketRef.current.style.left = `${rx - 18}px`;
+      rocketRef.current.style.top = `${ry - 18}px`;
+      rocketRef.current.style.transform = `rotate(${angle + 90}deg)`;
+    }
+
+    // We only update state if we're not in the middle of a high-frequency loop,
+    // or when we need to ensure the final position is captured.
+    if (manualMultiplier === undefined) {
+      setRocketPos({ x: rx, y: ry, angle });
+    }
   }, [isCrashed]);
 
   // Flying phase — RAF loop
@@ -130,7 +150,7 @@ export function GameCanvas({ gameState, countdown, winFlash }: GameCanvasProps) 
       const m = exp(elapsed);
       pointsRef.current.push({ t: elapsed, m });
       if (pointsRef.current.length > 3000) pointsRef.current.shift();
-      drawFrame();
+      drawFrame(m);
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);
@@ -139,6 +159,51 @@ export function GameCanvas({ gameState, countdown, winFlash }: GameCanvasProps) 
       if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
     };
   }, [phase, drawFrame]);
+
+  // BOLT OPTIMIZATION: Ensure manual updates are preserved after React re-renders to prevent flickering.
+  // We use the real-time values from refs if available, otherwise fallback to React state.
+  useLayoutEffect(() => {
+    const currentElapsed = elapsedRef.current ?? 0;
+    const currentMult = (isFlying && currentElapsed > 0) ? elapsedToMultiplier(currentElapsed) : displayMultiplier;
+
+    if (multiplierRef.current) {
+      multiplierRef.current.textContent = `${currentMult.toFixed(2)}x`;
+    }
+
+    if (rocketRef.current && (isFlying || isCrashed)) {
+      let rx, ry, angle;
+      if (isFlying && pointsRef.current.length >= 2) {
+        const pts = pointsRef.current;
+        const lastPt = pts[pts.length - 1];
+        const maxT = Math.max(lastPt.t * 1.15, 6000);
+        const maxM = Math.max(lastPt.m * 1.35, 2.0);
+        const W = canvasRef.current?.width ?? 0;
+        const H = canvasRef.current?.height ?? 0;
+        const pad = { l: 10, r: 20, t: 50, b: 30 };
+        const plotW = W - pad.l - pad.r;
+        const plotH = H - pad.t - pad.b;
+
+        rx = pad.l + (lastPt.t / maxT) * plotW;
+        ry = H - pad.b - ((lastPt.m - 1) / (maxM - 1)) * plotH;
+
+        angle = -45;
+        if (pts.length >= 5) {
+          const prev = pts[pts.length - 5];
+          const dx = (lastPt.t / maxT) * plotW - (prev.t / maxT) * plotW;
+          const dy = (H - pad.b - ((lastPt.m - 1) / (maxM - 1)) * plotH) - (H - pad.b - ((prev.m - 1) / (maxM - 1)) * plotH);
+          angle = Math.atan2(dy, dx) * (180 / Math.PI);
+        }
+      } else {
+        rx = rocketPos.x;
+        ry = rocketPos.y;
+        angle = rocketPos.angle;
+      }
+
+      rocketRef.current.style.left = `${rx - 18}px`;
+      rocketRef.current.style.top = `${ry - 18}px`;
+      rocketRef.current.style.transform = `rotate(${angle + 90}deg)`;
+    }
+  }, [isFlying, isCrashed, displayMultiplier, rocketPos, elapsedRef]);
 
   // Resize canvas to match container
   useEffect(() => {
@@ -199,8 +264,9 @@ export function GameCanvas({ gameState, countdown, winFlash }: GameCanvasProps) 
       <canvas ref={canvasRef} className="absolute inset-0 w-full h-full pointer-events-none" />
 
       {/* Rocket emoji at curve tip */}
-      {(isFlying || isCrashed) && rocketPos.x > 0 && (
+      {(isFlying || isCrashed) && (
         <div
+          ref={rocketRef}
           className="absolute pointer-events-none select-none"
           style={{
             left:        rocketPos.x - 18,
@@ -210,6 +276,8 @@ export function GameCanvas({ gameState, countdown, winFlash }: GameCanvasProps) 
             transform:   `rotate(${rocketPos.angle + 90}deg)`,
             filter:      isCrashed ? 'grayscale(1) opacity(0.4)' : 'drop-shadow(0 0 8px rgba(255,107,0,0.8))',
             transition:  'filter 0.3s',
+            // If it's the start of flight and we haven't updated via DOM yet, keep it hidden if x <= 0
+            visibility:  rocketPos.x > 0 || isFlying ? 'visible' : 'hidden'
           }}
         >
           🚀
@@ -229,6 +297,7 @@ export function GameCanvas({ gameState, countdown, winFlash }: GameCanvasProps) 
       {/* Central display */}
       <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
         <motion.span
+          ref={multiplierRef}
           className={cn(
             'font-mono font-black tracking-tighter select-none drop-shadow-2xl',
             isCrashed ? 'text-destructive text-7xl md:text-9xl' :
