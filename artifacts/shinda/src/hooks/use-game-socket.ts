@@ -44,16 +44,15 @@ export function useGameSocket(token: string | null) {
 
   const startTicker = useCallback(() => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    flyStartRef.current = Date.now();
+    if (!flyStartRef.current) {
+      flyStartRef.current = Date.now();
+    }
 
     const tick = () => {
-      const elapsed = Date.now() - (flyStartRef.current ?? Date.now());
-      elapsedRef.current = elapsed;
-      setGameState(s => ({
-        ...s,
-        elapsedMs:  elapsed,
-        multiplier: elapsedToMultiplier(elapsed),
-      }));
+      if (flyStartRef.current) {
+        const elapsed = Date.now() - flyStartRef.current;
+        elapsedRef.current = elapsed;
+      }
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);
