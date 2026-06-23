@@ -1,0 +1,3 @@
+## 2026-06-23 - [Decouple high-frequency UI updates from React state]
+**Learning:** High-frequency updates (60fps) in a real-time game like a Rocket Crash app should never be handled by React state. Even small state updates at this frequency trigger massive reconciliation overhead across the entire component tree.
+**Action:** Use `useRef` and direct DOM manipulation (e.g., `textContent`, `style.transform`) for 60fps updates. Use `useLayoutEffect` to ensure visual consistency after React re-renders, and ensure event handlers (like cashout) use the same timing refs instead of potentially stale React state.
