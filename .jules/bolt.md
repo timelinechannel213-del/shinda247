@@ -1,0 +1,3 @@
+## 2025-05-15 - [React high-frequency re-render bottleneck]
+**Learning:** High-frequency state updates (60fps) for the game multiplier in `useGameSocket` triggered full re-renders of the `Home` page and all its children. This is a major performance bottleneck for real-time games in React.
+**Action:** Decouple the visual animation loop from the React state lifecycle. Use `useRef` to track the start time and perform manual DOM updates (via `textContent` and `style`) in child components. Use `useLayoutEffect` to synchronize the manual DOM state with the declarative React state after occasional re-renders.

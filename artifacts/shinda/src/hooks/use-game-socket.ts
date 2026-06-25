@@ -43,25 +43,18 @@ export function useGameSocket(token: string | null) {
   const elapsedRef        = useRef<number>(0);
 
   const startTicker = useCallback(() => {
+    // ⚡ Bolt Optimization: Removed high-frequency setGameState loop.
+    // Instead of updating React state at 60fps, we only track the start time.
+    // Components (GameCanvas, GameControls) will use this ref to perform
+    // manual DOM updates, saving ~60 re-renders per second.
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     flyStartRef.current = Date.now();
-
-    const tick = () => {
-      const elapsed = Date.now() - (flyStartRef.current ?? Date.now());
-      elapsedRef.current = elapsed;
-      setGameState(s => ({
-        ...s,
-        elapsedMs:  elapsed,
-        multiplier: elapsedToMultiplier(elapsed),
-      }));
-      rafRef.current = requestAnimationFrame(tick);
-    };
-    rafRef.current = requestAnimationFrame(tick);
   }, []);
 
   const stopTicker = useCallback(() => {
     if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
     flyStartRef.current = null;
+    elapsedRef.current = 0;
   }, []);
 
   const startCountdown = useCallback((endsAt: number) => {
