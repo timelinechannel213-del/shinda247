@@ -1,10 +1,8 @@
-import { useEffect, useRef, useCallback, useMemo, useState } from 'react';
+import { useEffect, useRef, useCallback, useMemo, useState, useLayoutEffect } from 'react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import type { GameState } from '@/hooks/use-game-socket';
-
-const K = 35_000;
-const exp = (ms: number) => Math.exp(ms / K);
+import { elapsedToMultiplier } from '@/hooks/use-game-socket';
 
 interface WinFlash {
   payoutCents: number;
@@ -15,20 +13,37 @@ interface GameCanvasProps {
   gameState: GameState;
   countdown?: number | null;
   winFlash?: WinFlash | null;
+  flyStartRef: React.RefObject<number | null>;
 }
 
-export function GameCanvas({ gameState, countdown, winFlash }: GameCanvasProps) {
+export function GameCanvas({ gameState, countdown, winFlash, flyStartRef: sharedFlyStartRef }: GameCanvasProps) {
   const canvasRef    = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const pointsRef    = useRef<Array<{ t: number; m: number }>>([]);
-  const flyStartRef  = useRef<number | null>(null);
+  const internalFlyStartRef  = useRef<number | null>(null);
   const rafRef       = useRef<number | null>(null);
+  const multiplierTextRef = useRef<HTMLSpanElement>(null);
 
   const [rocketPos, setRocketPos]     = useState({ x: -100, y: -100, angle: -45 });
   const [flashVisible, setFlashVisible] = useState(false);
 
   const { phase, multiplier, crashedAt } = gameState;
   const displayMultiplier = phase === 'crashed' && crashedAt != null ? crashedAt : multiplier;
+
+  // BOLT: Update multiplier text directly to avoid React re-renders.
+  // We use useLayoutEffect to ensure the DOM is immediately updated after any React re-render.
+  useLayoutEffect(() => {
+    if (multiplierTextRef.current) {
+      if (phase === 'flying' && sharedFlyStartRef.current) {
+        const elapsed = Date.now() - sharedFlyStartRef.current;
+        const m = elapsedToMultiplier(elapsed);
+        multiplierTextRef.current.textContent = `${m.toFixed(2)}x`;
+      } else {
+        multiplierTextRef.current.textContent = `${displayMultiplier.toFixed(2)}x`;
+      }
+    }
+  }, [phase, displayMultiplier, sharedFlyStartRef]);
+
   const isCrashed = phase === 'crashed';
   const isFlying  = phase === 'flying';
   const isBetting = phase === 'betting';
@@ -111,7 +126,7 @@ export function GameCanvas({ gameState, countdown, winFlash }: GameCanvasProps) 
       if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
       if (phase === 'waiting' || phase === 'betting') {
         pointsRef.current = [];
-        flyStartRef.current = null;
+        internalFlyStartRef.current = null;
         const canvas = canvasRef.current;
         if (canvas) canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height);
         setRocketPos({ x: -100, y: -100, angle: -45 });
@@ -123,11 +138,19 @@ export function GameCanvas({ gameState, countdown, winFlash }: GameCanvasProps) 
     }
 
     pointsRef.current = [];
-    flyStartRef.current = Date.now();
+    // BOLT: Use the shared start time for visual synchronization
+    internalFlyStartRef.current = sharedFlyStartRef.current || Date.now();
 
     const tick = () => {
-      const elapsed = Date.now() - (flyStartRef.current ?? Date.now());
-      const m = exp(elapsed);
+      const elapsed = Date.now() - (internalFlyStartRef.current ?? Date.now());
+      const m = Math.exp(elapsed / 35000); // Internal use for curve points
+
+      // Update multiplier text directly
+      if (multiplierTextRef.current) {
+        const displayM = elapsedToMultiplier(elapsed);
+        multiplierTextRef.current.textContent = `${displayM.toFixed(2)}x`;
+      }
+
       pointsRef.current.push({ t: elapsed, m });
       if (pointsRef.current.length > 3000) pointsRef.current.shift();
       drawFrame();
@@ -229,6 +252,7 @@ export function GameCanvas({ gameState, countdown, winFlash }: GameCanvasProps) 
       {/* Central display */}
       <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
         <motion.span
+          ref={multiplierTextRef}
           className={cn(
             'font-mono font-black tracking-tighter select-none drop-shadow-2xl',
             isCrashed ? 'text-destructive text-7xl md:text-9xl' :
