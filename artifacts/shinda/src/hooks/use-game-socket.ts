@@ -22,7 +22,7 @@ export interface ActiveBet {
   autoCashoutAt: number | null;
 }
 
-const K = 35_000;
+export const K = 35_000;
 export const elapsedToMultiplier = (ms: number) => Math.round(Math.exp(ms / K) * 100) / 100;
 
 export function useGameSocket(token: string | null) {
@@ -49,11 +49,8 @@ export function useGameSocket(token: string | null) {
     const tick = () => {
       const elapsed = Date.now() - (flyStartRef.current ?? Date.now());
       elapsedRef.current = elapsed;
-      setGameState(s => ({
-        ...s,
-        elapsedMs:  elapsed,
-        multiplier: elapsedToMultiplier(elapsed),
-      }));
+      // ⚡ Bolt: Removed setGameState to stop 60fps re-renders of the whole app.
+      // Child components (GameCanvas, GameControls) now use flyStartRef for direct DOM updates.
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);

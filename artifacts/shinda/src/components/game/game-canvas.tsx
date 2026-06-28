@@ -1,9 +1,8 @@
-import { useEffect, useRef, useCallback, useMemo, useState } from 'react';
+import { useEffect, useRef, useCallback, useMemo, useState, useLayoutEffect } from 'react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
-import type { GameState } from '@/hooks/use-game-socket';
+import { type GameState, K, elapsedToMultiplier } from '@/hooks/use-game-socket';
 
-const K = 35_000;
 const exp = (ms: number) => Math.exp(ms / K);
 
 interface WinFlash {
@@ -15,16 +14,20 @@ interface GameCanvasProps {
   gameState: GameState;
   countdown?: number | null;
   winFlash?: WinFlash | null;
+  flyStartRef: React.RefObject<number | null>;
 }
 
-export function GameCanvas({ gameState, countdown, winFlash }: GameCanvasProps) {
+export function GameCanvas({ gameState, countdown, winFlash, flyStartRef: sharedFlyStartRef }: GameCanvasProps) {
   const canvasRef    = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const pointsRef    = useRef<Array<{ t: number; m: number }>>([]);
-  const flyStartRef  = useRef<number | null>(null);
   const rafRef       = useRef<number | null>(null);
 
-  const [rocketPos, setRocketPos]     = useState({ x: -100, y: -100, angle: -45 });
+  // ⚡ Bolt: Using refs for direct DOM updates to avoid 60fps React re-renders
+  const rocketRef     = useRef<HTMLDivElement>(null);
+  const multiplierRef = useRef<HTMLSpanElement>(null);
+  const rocketPosRef  = useRef({ x: -100, y: -100, angle: -45 });
+
   const [flashVisible, setFlashVisible] = useState(false);
 
   const { phase, multiplier, crashedAt } = gameState;
@@ -102,7 +105,17 @@ export function GameCanvas({ gameState, countdown, winFlash }: GameCanvasProps) 
       const dy = toY(lastPt.m) - toY(prev.m);
       angle = Math.atan2(dy, dx) * (180 / Math.PI);
     }
-    setRocketPos({ x: rx, y: ry, angle });
+
+    // ⚡ Bolt: Directly update DOM elements to avoid React re-render overhead
+    rocketPosRef.current = { x: rx, y: ry, angle };
+    if (rocketRef.current) {
+      rocketRef.current.style.left = `${rx - 18}px`;
+      rocketRef.current.style.top = `${ry - 18}px`;
+      rocketRef.current.style.transform = `rotate(${angle + 90}deg)`;
+    }
+    if (multiplierRef.current && !isCrashed) {
+      multiplierRef.current.textContent = `${lastPt.m.toFixed(2)}x`;
+    }
   }, [isCrashed]);
 
   // Flying phase — RAF loop
@@ -111,10 +124,12 @@ export function GameCanvas({ gameState, countdown, winFlash }: GameCanvasProps) 
       if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
       if (phase === 'waiting' || phase === 'betting') {
         pointsRef.current = [];
-        flyStartRef.current = null;
         const canvas = canvasRef.current;
         if (canvas) canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height);
-        setRocketPos({ x: -100, y: -100, angle: -45 });
+        rocketPosRef.current = { x: -100, y: -100, angle: -45 };
+        if (rocketRef.current) {
+          rocketRef.current.style.left = '-100px';
+        }
       }
       if (phase === 'crashed') {
         drawFrame(); // freeze curve
@@ -123,11 +138,10 @@ export function GameCanvas({ gameState, countdown, winFlash }: GameCanvasProps) 
     }
 
     pointsRef.current = [];
-    flyStartRef.current = Date.now();
 
     const tick = () => {
-      const elapsed = Date.now() - (flyStartRef.current ?? Date.now());
-      const m = exp(elapsed);
+      const elapsed = Date.now() - (sharedFlyStartRef.current ?? Date.now());
+      const m = Math.exp(elapsed / K);
       pointsRef.current.push({ t: elapsed, m });
       if (pointsRef.current.length > 3000) pointsRef.current.shift();
       drawFrame();
@@ -163,6 +177,24 @@ export function GameCanvas({ gameState, countdown, winFlash }: GameCanvasProps) 
     'text-white';
 
   // Deterministic stars
+  // ⚡ Bolt: useLayoutEffect ensures manual DOM state persists after React re-renders
+  useLayoutEffect(() => {
+    const { x, y, angle } = rocketPosRef.current;
+    if (rocketRef.current) {
+      rocketRef.current.style.left = `${x - 18}px`;
+      rocketRef.current.style.top = `${y - 18}px`;
+      rocketRef.current.style.transform = `rotate(${angle + 90}deg)`;
+    }
+    if (multiplierRef.current) {
+      if (phase === 'flying' && sharedFlyStartRef.current) {
+        const elapsed = Date.now() - sharedFlyStartRef.current;
+        multiplierRef.current.textContent = `${elapsedToMultiplier(elapsed).toFixed(2)}x`;
+      } else {
+        multiplierRef.current.textContent = `${displayMultiplier.toFixed(2)}x`;
+      }
+    }
+  });
+
   const stars = useMemo(() =>
     Array.from({ length: 55 }).map((_, i) => ({
       left:     `${(i * 17.31 + 3) % 100}%`,
@@ -199,15 +231,16 @@ export function GameCanvas({ gameState, countdown, winFlash }: GameCanvasProps) 
       <canvas ref={canvasRef} className="absolute inset-0 w-full h-full pointer-events-none" />
 
       {/* Rocket emoji at curve tip */}
-      {(isFlying || isCrashed) && rocketPos.x > 0 && (
+      {(isFlying || isCrashed) && (
         <div
+          ref={rocketRef}
           className="absolute pointer-events-none select-none"
           style={{
-            left:        rocketPos.x - 18,
-            top:         rocketPos.y - 18,
+            left:        rocketPosRef.current.x - 18,
+            top:         rocketPosRef.current.y - 18,
             fontSize:    '32px',
             lineHeight:  1,
-            transform:   `rotate(${rocketPos.angle + 90}deg)`,
+            transform:   `rotate(${rocketPosRef.current.angle + 90}deg)`,
             filter:      isCrashed ? 'grayscale(1) opacity(0.4)' : 'drop-shadow(0 0 8px rgba(255,107,0,0.8))',
             transition:  'filter 0.3s',
           }}
@@ -229,6 +262,7 @@ export function GameCanvas({ gameState, countdown, winFlash }: GameCanvasProps) 
       {/* Central display */}
       <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
         <motion.span
+          ref={multiplierRef}
           className={cn(
             'font-mono font-black tracking-tighter select-none drop-shadow-2xl',
             isCrashed ? 'text-destructive text-7xl md:text-9xl' :
