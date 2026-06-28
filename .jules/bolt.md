@@ -1,0 +1,3 @@
+## 2026-06-28 - [Decoupling high-frequency UI updates from React state]
+**Learning:** High-frequency React state updates (e.g., 60fps for a game multiplier) trigger massive re-render overhead across the component tree. Always prefer direct DOM updates via refs for animation-related values.
+**Action:** Use `useRef` for DOM elements and `requestAnimationFrame` for updates. Use `useLayoutEffect` to re-apply manual DOM updates after React re-renders to prevent visual 'snapping' or 'flickering' to stale state values. Ensure the real-time value is re-calculated in `useLayoutEffect` using a stable time reference (e.g., `flyStartRef`).
