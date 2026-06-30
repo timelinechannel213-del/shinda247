@@ -49,11 +49,8 @@ export function useGameSocket(token: string | null) {
     const tick = () => {
       const elapsed = Date.now() - (flyStartRef.current ?? Date.now());
       elapsedRef.current = elapsed;
-      setGameState(s => ({
-        ...s,
-        elapsedMs:  elapsed,
-        multiplier: elapsedToMultiplier(elapsed),
-      }));
+      // ⚡ Bolt: Removed setGameState from RAF loop to prevent 60fps re-renders of the entire dashboard.
+      // Child components now use flyStartRef for direct DOM updates.
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);

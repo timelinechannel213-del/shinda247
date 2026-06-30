@@ -17,9 +17,10 @@ interface GameControlsProps {
   connected:   boolean;
   send:        (type: string, data?: unknown) => void;
   onWin?:      (flash: WinFlash) => void;
+  flyStartRef: React.RefObject<number | null>;
 }
 
-export function GameControls({ gameState, activeBets, connected, send, onWin }: GameControlsProps) {
+export function GameControls({ gameState, activeBets, connected, send, onWin, flyStartRef }: GameControlsProps) {
   const { token, userId, refreshBalance } = useAuth();
   const { toast } = useToast();
 
@@ -28,6 +29,8 @@ export function GameControls({ gameState, activeBets, connected, send, onWin }: 
   const [pending, setPending]   = useState(false);
 
   const prevRoundId = useRef<number>(0);
+  const cashoutBtnRef = useRef<HTMLButtonElement>(null);
+  const rafRef = useRef<number | null>(null);
 
   const { phase, multiplier, roundId, id } = gameState;
 
@@ -68,9 +71,16 @@ export function GameControls({ gameState, activeBets, connected, send, onWin }: 
     }
   };
 
+  const K = 35_000;
+  const elapsedToMultiplier = (ms: number) => Math.round(Math.exp(ms / K) * 100) / 100;
+
   const handleCashOut = async () => {
     if (!token) return;
-    const cashoutMultiplier = multiplier;
+    // ⚡ Bolt: Use real-time multiplier for cashout to ensure accuracy,
+    // as gameState.multiplier is no longer updated at 60fps.
+    const elapsed = Date.now() - (flyStartRef.current ?? Date.now());
+    const cashoutMultiplier = phase === 'flying' ? elapsedToMultiplier(elapsed) : multiplier;
+
     setPending(true);
     try {
       const res  = await fetch('/api/game/cashout', {
@@ -95,6 +105,53 @@ export function GameControls({ gameState, activeBets, connected, send, onWin }: 
   const cashoutValue = myBet
     ? ((myBet.amountCents / 100) * multiplier).toFixed(2)
     : (parseFloat(amount || '0') * multiplier).toFixed(2);
+
+  // ⚡ Bolt: Direct DOM update for cashout button value to avoid 60fps re-renders.
+  useEffect(() => {
+    if (phase !== 'flying' || !flyStartRef.current) {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      return;
+    }
+
+    const update = () => {
+      if (cashoutBtnRef.current) {
+        const elapsed = Date.now() - (flyStartRef.current ?? Date.now());
+        const m = elapsedToMultiplier(elapsed);
+        const val = myBet
+          ? ((myBet.amountCents / 100) * m).toFixed(2)
+          : (parseFloat(amount || '0') * m).toFixed(2);
+
+        if (canCashOut) {
+          cashoutBtnRef.current.textContent = pending ? 'CASHING OUT...' : `CASH OUT\nKES ${val}`;
+        } else if (hasBet && !cashedOut) {
+          cashoutBtnRef.current.textContent = `CASH OUT KES ${val}`;
+        }
+      }
+      rafRef.current = requestAnimationFrame(update);
+    };
+    rafRef.current = requestAnimationFrame(update);
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+  }, [phase, myBet, amount, canCashOut, hasBet, cashedOut, pending, flyStartRef]);
+
+  // ⚡ Bolt: useLayoutEffect ensures the button text is correct after a React re-render.
+  useLayoutEffect(() => {
+    if (cashoutBtnRef.current) {
+      if (canCashOut) {
+        cashoutBtnRef.current.textContent = pending ? 'CASHING OUT...' : `CASH OUT\nKES ${cashoutValue}`;
+      } else if (phase === 'waiting' || phase === 'betting') {
+        const label = pending ? 'PLACING BET...'
+          : hasBet && cashedOut ? 'CASHED OUT ✓'
+          : hasBet ? 'BET PLACED — WAIT'
+          : phase === 'betting' ? 'PLACE BET'
+          : 'WAITING...';
+        cashoutBtnRef.current.textContent = label;
+      } else if (phase === 'flying' && hasBet) {
+        cashoutBtnRef.current.textContent = cashedOut ? 'CASHED OUT ✓' : pending ? 'CASHING OUT...' : `CASH OUT KES ${cashoutValue}`;
+      } else {
+        cashoutBtnRef.current.textContent = phase === 'crashed' ? 'ROUND ENDED' : 'WAIT FOR BETTING';
+      }
+    }
+  }, [canCashOut, pending, cashoutValue, phase, hasBet, cashedOut]);
 
   return (
     <div className="w-full bg-card rounded-2xl border border-border/50 p-4 md:p-6 shadow-xl flex flex-col md:flex-row gap-4 lg:gap-8 shrink-0">
@@ -147,11 +204,11 @@ export function GameControls({ gameState, activeBets, connected, send, onWin }: 
 
       <div className="w-full md:w-[300px] flex items-end">
         {canCashOut ? (
-          <Button size="xl" variant="success" className="w-full h-20 text-xl" onClick={handleCashOut} disabled={pending}>
+          <Button ref={cashoutBtnRef} size="xl" variant="success" className="w-full h-20 text-xl" onClick={handleCashOut} disabled={pending}>
             {pending ? 'CASHING OUT...' : `CASH OUT\nKES ${cashoutValue}`}
           </Button>
         ) : phase === 'waiting' || phase === 'betting' ? (
-          <Button size="xl" className="w-full h-20 text-2xl" onClick={handleBet} disabled={hasBet || pending || !canBet}>
+          <Button ref={cashoutBtnRef} size="xl" className="w-full h-20 text-2xl" onClick={handleBet} disabled={hasBet || pending || !canBet}>
             {pending           ? 'PLACING BET...'
              : hasBet && cashedOut ? 'CASHED OUT ✓'
              : hasBet           ? 'BET PLACED — WAIT'
@@ -159,11 +216,11 @@ export function GameControls({ gameState, activeBets, connected, send, onWin }: 
              : 'WAITING...'}
           </Button>
         ) : phase === 'flying' && hasBet ? (
-          <Button size="xl" variant="success" className="w-full h-20 text-xl" onClick={handleCashOut} disabled={pending || cashedOut}>
+          <Button ref={cashoutBtnRef} size="xl" variant="success" className="w-full h-20 text-xl" onClick={handleCashOut} disabled={pending || cashedOut}>
             {cashedOut ? 'CASHED OUT ✓' : pending ? 'CASHING OUT...' : `CASH OUT KES ${cashoutValue}`}
           </Button>
         ) : (
-          <Button size="xl" variant="secondary" className="w-full h-20 text-xl text-muted-foreground" disabled>
+          <Button ref={cashoutBtnRef} size="xl" variant="secondary" className="w-full h-20 text-xl text-muted-foreground" disabled>
             {phase === 'crashed' ? 'ROUND ENDED' : 'WAIT FOR BETTING'}
           </Button>
         )}

@@ -1,0 +1,3 @@
+## 2025-05-15 - Decoupled high-frequency UI updates
+**Learning:** High-frequency React state updates (e.g., 60fps in `useGameSocket`) trigger massive re-render overhead across the entire component tree. Direct DOM manipulation using refs for values like the multiplier and rocket position significantly improves performance. `useLayoutEffect` is essential to prevent visual 'flickering' when React re-renders and resets the DOM to its declarative JSX state.
+**Action:** Use refs and direct DOM updates for 60fps animations. Use `useLayoutEffect` to re-apply manual updates after React re-renders. Calculate real-time values from a shared time ref (`flyStartRef`) in event handlers to avoid stale state.
