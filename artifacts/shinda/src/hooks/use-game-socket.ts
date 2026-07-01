@@ -49,11 +49,8 @@ export function useGameSocket(token: string | null) {
     const tick = () => {
       const elapsed = Date.now() - (flyStartRef.current ?? Date.now());
       elapsedRef.current = elapsed;
-      setGameState(s => ({
-        ...s,
-        elapsedMs:  elapsed,
-        multiplier: elapsedToMultiplier(elapsed),
-      }));
+      // ⚡ Bolt: Decoupled high-frequency updates from React state to prevent 60fps re-renders.
+      // Child components now use flyStartRef and requestAnimationFrame for manual DOM updates.
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);
