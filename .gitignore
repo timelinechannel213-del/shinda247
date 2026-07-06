@@ -1,0 +1,9 @@
+node_modules
+dist
+.replit
+.jules
+*.log
+.next
+out
+build
+*.tsbuildinfo
