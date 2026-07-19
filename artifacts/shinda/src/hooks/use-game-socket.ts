@@ -44,16 +44,15 @@ export function useGameSocket(token: string | null) {
 
   const startTicker = useCallback(() => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    flyStartRef.current = Date.now();
+    if (flyStartRef.current === null) {
+      flyStartRef.current = Date.now();
+    }
 
     const tick = () => {
       const elapsed = Date.now() - (flyStartRef.current ?? Date.now());
       elapsedRef.current = elapsed;
-      setGameState(s => ({
-        ...s,
-        elapsedMs:  elapsed,
-        multiplier: elapsedToMultiplier(elapsed),
-      }));
+      // Completely decoupled from React state to avoid 60fps re-renders of the component tree.
+      // Child components will read flyStartRef directly and update the DOM directly via RAF.
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);
