@@ -17,9 +17,11 @@ interface GameControlsProps {
   connected:   boolean;
   send:        (type: string, data?: unknown) => void;
   onWin?:      (flash: WinFlash) => void;
+  flyStartRef?: React.RefObject<number | null>;
+  elapsedRef?: React.RefObject<number>;
 }
 
-export function GameControls({ gameState, activeBets, connected, send, onWin }: GameControlsProps) {
+export function GameControls({ gameState, activeBets, connected, send, onWin, flyStartRef, elapsedRef }: GameControlsProps) {
   const { token, userId, refreshBalance } = useAuth();
   const { toast } = useToast();
 
@@ -28,6 +30,9 @@ export function GameControls({ gameState, activeBets, connected, send, onWin }: 
   const [pending, setPending]   = useState(false);
 
   const prevRoundId = useRef<number>(0);
+  const liveCashoutValRef = useRef<HTMLSpanElement>(null);
+  const liveCashoutValRef2 = useRef<HTMLSpanElement>(null);
+  const loopRef = useRef<number | null>(null);
 
   const { phase, multiplier, roundId, id } = gameState;
 
@@ -42,6 +47,46 @@ export function GameControls({ gameState, activeBets, connected, send, onWin }: 
       prevRoundId.current = id;
     }
   }, [id, phase]);
+
+  // High-frequency RAF loop to update the real-time cashout value button text directly to prevent lag & re-renders!
+  useEffect(() => {
+    const isFlying = phase === 'flying';
+    if (!isFlying || !flyStartRef?.current) {
+      if (loopRef.current) {
+        cancelAnimationFrame(loopRef.current);
+        loopRef.current = null;
+      }
+      return;
+    }
+
+    const betAmount = myBet ? myBet.amountCents / 100 : parseFloat(amount || '0');
+
+    const updateLiveValue = () => {
+      if (!flyStartRef.current) return;
+      const elapsed = Date.now() - flyStartRef.current;
+      const K = 35_000;
+      const currentMultiplier = Math.exp(elapsed / K);
+      const val = (betAmount * currentMultiplier).toFixed(2);
+
+      if (liveCashoutValRef.current) {
+        liveCashoutValRef.current.textContent = `KES ${val}`;
+      }
+      if (liveCashoutValRef2.current) {
+        liveCashoutValRef2.current.textContent = `KES ${val}`;
+      }
+
+      loopRef.current = requestAnimationFrame(updateLiveValue);
+    };
+
+    loopRef.current = requestAnimationFrame(updateLiveValue);
+
+    return () => {
+      if (loopRef.current) {
+        cancelAnimationFrame(loopRef.current);
+        loopRef.current = null;
+      }
+    };
+  }, [phase, flyStartRef, myBet, amount]);
 
   const handleBet = async () => {
     if (!token) { toast({ title: 'Login required', variant: 'destructive' }); return; }
@@ -147,8 +192,9 @@ export function GameControls({ gameState, activeBets, connected, send, onWin }: 
 
       <div className="w-full md:w-[300px] flex items-end">
         {canCashOut ? (
-          <Button size="xl" variant="success" className="w-full h-20 text-xl" onClick={handleCashOut} disabled={pending}>
-            {pending ? 'CASHING OUT...' : `CASH OUT\nKES ${cashoutValue}`}
+          <Button size="xl" variant="success" className="w-full h-20 text-xl flex flex-col items-center justify-center" onClick={handleCashOut} disabled={pending}>
+            <span>{pending ? 'CASHING OUT...' : 'CASH OUT'}</span>
+            {!pending && <span ref={liveCashoutValRef} className="font-mono font-bold">KES {cashoutValue}</span>}
           </Button>
         ) : phase === 'waiting' || phase === 'betting' ? (
           <Button size="xl" className="w-full h-20 text-2xl" onClick={handleBet} disabled={hasBet || pending || !canBet}>
@@ -159,8 +205,9 @@ export function GameControls({ gameState, activeBets, connected, send, onWin }: 
              : 'WAITING...'}
           </Button>
         ) : phase === 'flying' && hasBet ? (
-          <Button size="xl" variant="success" className="w-full h-20 text-xl" onClick={handleCashOut} disabled={pending || cashedOut}>
-            {cashedOut ? 'CASHED OUT ✓' : pending ? 'CASHING OUT...' : `CASH OUT KES ${cashoutValue}`}
+          <Button size="xl" variant="success" className="w-full h-20 text-xl flex flex-col items-center justify-center" onClick={handleCashOut} disabled={pending || cashedOut}>
+            <span>{cashedOut ? 'CASHED OUT ✓' : pending ? 'CASHING OUT...' : 'CASH OUT'}</span>
+            {!cashedOut && !pending && <span ref={liveCashoutValRef2} className="font-mono font-bold">KES {cashoutValue}</span>}
           </Button>
         ) : (
           <Button size="xl" variant="secondary" className="w-full h-20 text-xl text-muted-foreground" disabled>

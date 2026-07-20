@@ -15,14 +15,18 @@ interface GameCanvasProps {
   gameState: GameState;
   countdown?: number | null;
   winFlash?: WinFlash | null;
+  flyStartRef?: React.RefObject<number | null>;
+  elapsedRef?: React.RefObject<number>;
 }
 
-export function GameCanvas({ gameState, countdown, winFlash }: GameCanvasProps) {
-  const canvasRef    = useRef<HTMLCanvasElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const pointsRef    = useRef<Array<{ t: number; m: number }>>([]);
-  const flyStartRef  = useRef<number | null>(null);
-  const rafRef       = useRef<number | null>(null);
+export function GameCanvas({ gameState, countdown, winFlash, flyStartRef: externalFlyStartRef, elapsedRef }: GameCanvasProps) {
+  const canvasRef      = useRef<HTMLCanvasElement>(null);
+  const containerRef   = useRef<HTMLDivElement>(null);
+  const pointsRef      = useRef<Array<{ t: number; m: number }>>([]);
+  const flyStartRef    = useRef<number | null>(null);
+  const rafRef         = useRef<number | null>(null);
+  const multiplierRef  = useRef<HTMLSpanElement>(null);
+  const rocketRef      = useRef<HTMLDivElement>(null);
 
   const [rocketPos, setRocketPos]     = useState({ x: -100, y: -100, angle: -45 });
   const [flashVisible, setFlashVisible] = useState(false);
@@ -105,6 +109,22 @@ export function GameCanvas({ gameState, countdown, winFlash }: GameCanvasProps) 
     setRocketPos({ x: rx, y: ry, angle });
   }, [isCrashed]);
 
+  // Synchronize multiplier and rocket display on React re-render
+  // This prevents 'flickering' or resetting to declarative state during renders.
+  useEffect(() => {
+    if (phase === 'flying' && externalFlyStartRef?.current) {
+      const elapsed = Date.now() - externalFlyStartRef.current;
+      const m = Math.round(exp(elapsed) * 100) / 100;
+      if (multiplierRef.current) {
+        multiplierRef.current.textContent = m.toFixed(2) + 'x';
+      }
+    } else {
+      if (multiplierRef.current) {
+        multiplierRef.current.textContent = displayMultiplier.toFixed(2) + 'x';
+      }
+    }
+  }, [phase, displayMultiplier, externalFlyStartRef]);
+
   // Flying phase — RAF loop
   useEffect(() => {
     if (phase !== 'flying') {
@@ -123,7 +143,8 @@ export function GameCanvas({ gameState, countdown, winFlash }: GameCanvasProps) 
     }
 
     pointsRef.current = [];
-    flyStartRef.current = Date.now();
+    // Synchronize local flyStart with external flyStartRef
+    flyStartRef.current = externalFlyStartRef?.current ?? Date.now();
 
     const tick = () => {
       const elapsed = Date.now() - (flyStartRef.current ?? Date.now());
@@ -131,6 +152,12 @@ export function GameCanvas({ gameState, countdown, winFlash }: GameCanvasProps) 
       pointsRef.current.push({ t: elapsed, m });
       if (pointsRef.current.length > 3000) pointsRef.current.shift();
       drawFrame();
+
+      // ⚡ Bolt: Direct DOM manipulation of the multiplier text at 60fps bypasses React completely!
+      if (multiplierRef.current) {
+        multiplierRef.current.textContent = m.toFixed(2) + 'x';
+      }
+
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);
@@ -138,7 +165,7 @@ export function GameCanvas({ gameState, countdown, winFlash }: GameCanvasProps) 
     return () => {
       if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
     };
-  }, [phase, drawFrame]);
+  }, [phase, drawFrame, externalFlyStartRef]);
 
   // Resize canvas to match container
   useEffect(() => {
@@ -228,18 +255,18 @@ export function GameCanvas({ gameState, countdown, winFlash }: GameCanvasProps) 
 
       {/* Central display */}
       <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-        <motion.span
+        <span
+          ref={multiplierRef}
           className={cn(
-            'font-mono font-black tracking-tighter select-none drop-shadow-2xl',
+            'font-mono font-black tracking-tighter select-none drop-shadow-2xl transition-all duration-300',
             isCrashed ? 'text-destructive text-7xl md:text-9xl' :
             isFlying  ? 'text-white text-6xl md:text-8xl' :
                         'text-white/30 text-5xl md:text-7xl'
           )}
-          animate={isFlying ? { textShadow: ['0 0 20px rgba(255,255,255,0.3)', '0 0 40px rgba(255,255,255,0.6)', '0 0 20px rgba(255,255,255,0.3)'] } : {}}
-          transition={{ repeat: Infinity, duration: 1.5 }}
+          style={isFlying ? { textShadow: '0 0 20px rgba(255,255,255,0.3)' } : undefined}
         >
           {displayMultiplier.toFixed(2)}x
-        </motion.span>
+        </span>
 
         {isCrashed && (
           <motion.div
