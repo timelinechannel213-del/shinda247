@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.env
+.env.*
+*.log
+.eslintcache
+.parcel-cache
+.cache
+.pnpm-debug.log*

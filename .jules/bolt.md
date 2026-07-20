@@ -1,0 +1,3 @@
+## 2025-03-02 - Decouple High-Frequency State from React Tree
+**Learning:** High-frequency React state updates (like 60fps game multiplier or canvas updates) in hooks or parent components trigger massive re-renders across the entire component tree, causing performance bottlenecks. Using refs for high-frequency ticks and direct DOM manipulation (e.g., textContent, inline styles) completely bypasses React's render loop, resulting in a dramatic performance boost.
+**Action:** Decouple the 60fps multiplier updates and drawing loop from React state by passing `flyStartRef` and updating DOM elements directly using animation frames.
