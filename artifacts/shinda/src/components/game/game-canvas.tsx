@@ -1,10 +1,11 @@
-import { useEffect, useRef, useCallback, useMemo, useState } from 'react';
+import { useEffect, useRef, useCallback, useMemo, useState, useLayoutEffect } from 'react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import type { GameState } from '@/hooks/use-game-socket';
 
 const K = 35_000;
 const exp = (ms: number) => Math.exp(ms / K);
+const elapsedToMultiplier = (ms: number) => Math.round(Math.exp(ms / K) * 100) / 100;
 
 interface WinFlash {
   payoutCents: number;
@@ -15,16 +16,19 @@ interface GameCanvasProps {
   gameState: GameState;
   countdown?: number | null;
   winFlash?: WinFlash | null;
+  flyStartRef?: React.MutableRefObject<number | null>;
 }
 
-export function GameCanvas({ gameState, countdown, winFlash }: GameCanvasProps) {
+export function GameCanvas({ gameState, countdown, winFlash, flyStartRef }: GameCanvasProps) {
   const canvasRef    = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const pointsRef    = useRef<Array<{ t: number; m: number }>>([]);
-  const flyStartRef  = useRef<number | null>(null);
   const rafRef       = useRef<number | null>(null);
 
-  const [rocketPos, setRocketPos]     = useState({ x: -100, y: -100, angle: -45 });
+  const multiplierTextRef = useRef<HTMLSpanElement>(null);
+  const rocketRef         = useRef<HTMLDivElement>(null);
+  const flameRef          = useRef<HTMLDivElement>(null);
+
   const [flashVisible, setFlashVisible] = useState(false);
 
   const { phase, multiplier, crashedAt } = gameState;
@@ -102,8 +106,61 @@ export function GameCanvas({ gameState, countdown, winFlash }: GameCanvasProps) 
       const dy = toY(lastPt.m) - toY(prev.m);
       angle = Math.atan2(dy, dx) * (180 / Math.PI);
     }
-    setRocketPos({ x: rx, y: ry, angle });
+
+    const rEl = rocketRef.current;
+    if (rEl) {
+      rEl.style.left = `${rx}px`;
+      rEl.style.top = `${ry}px`;
+      rEl.style.transform = `translate(-50%, -50%) rotate(${angle + 90}deg)`;
+    }
   }, [isCrashed]);
+
+  // Synchronize visual state after React re-renders to prevent flickering/snapping
+  useLayoutEffect(() => {
+    const el = multiplierTextRef.current;
+    if (el) {
+      if (phase === 'crashed') {
+        el.className = 'font-mono font-black tracking-tighter select-none drop-shadow-2xl text-destructive text-7xl md:text-9xl';
+        el.textContent = `${(crashedAt ?? 1.0).toFixed(2)}x`;
+      } else if (phase === 'flying') {
+        el.className = 'font-mono font-black tracking-tighter select-none drop-shadow-2xl text-white text-6xl md:text-8xl';
+        const start = flyStartRef?.current ?? Date.now();
+        const elapsed = Date.now() - start;
+        const m = elapsedToMultiplier(elapsed);
+        el.textContent = `${m.toFixed(2)}x`;
+      } else {
+        el.className = 'font-mono font-black tracking-tighter select-none drop-shadow-2xl text-white/30 text-5xl md:text-7xl';
+        el.textContent = '1.00x';
+      }
+    }
+
+    const rEl = rocketRef.current;
+    const flameEl = flameRef.current;
+    if (rEl) {
+      if (phase === 'flying') {
+        rEl.style.display = 'block';
+        rEl.style.filter = 'drop-shadow(0 0 8px rgba(255,107,0,0.8))';
+        if (flameEl) flameEl.style.display = 'block';
+
+        // Populate first point immediately
+        const start = flyStartRef?.current ?? Date.now();
+        const elapsed = Date.now() - start;
+        const m = exp(elapsed);
+        if (pointsRef.current.length === 0) {
+          pointsRef.current = [{ t: elapsed, m }];
+        }
+        drawFrame();
+      } else if (phase === 'crashed') {
+        rEl.style.display = 'block';
+        rEl.style.filter = 'grayscale(1) opacity(0.4)';
+        if (flameEl) flameEl.style.display = 'none';
+        drawFrame();
+      } else {
+        rEl.style.display = 'none';
+        if (flameEl) flameEl.style.display = 'none';
+      }
+    }
+  }, [phase, crashedAt, drawFrame, flyStartRef]);
 
   // Flying phase — RAF loop
   useEffect(() => {
@@ -111,10 +168,8 @@ export function GameCanvas({ gameState, countdown, winFlash }: GameCanvasProps) 
       if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
       if (phase === 'waiting' || phase === 'betting') {
         pointsRef.current = [];
-        flyStartRef.current = null;
         const canvas = canvasRef.current;
         if (canvas) canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height);
-        setRocketPos({ x: -100, y: -100, angle: -45 });
       }
       if (phase === 'crashed') {
         drawFrame(); // freeze curve
@@ -123,14 +178,23 @@ export function GameCanvas({ gameState, countdown, winFlash }: GameCanvasProps) 
     }
 
     pointsRef.current = [];
-    flyStartRef.current = Date.now();
+
+    const getStartTime = () => flyStartRef?.current ?? Date.now();
 
     const tick = () => {
-      const elapsed = Date.now() - (flyStartRef.current ?? Date.now());
+      const start = getStartTime();
+      const elapsed = Date.now() - start;
       const m = exp(elapsed);
       pointsRef.current.push({ t: elapsed, m });
       if (pointsRef.current.length > 3000) pointsRef.current.shift();
       drawFrame();
+
+      // Direct DOM update for high-frequency multiplier text
+      if (multiplierTextRef.current) {
+        const multVal = Math.round(m * 100) / 100;
+        multiplierTextRef.current.textContent = `${multVal.toFixed(2)}x`;
+      }
+
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);
@@ -138,7 +202,7 @@ export function GameCanvas({ gameState, countdown, winFlash }: GameCanvasProps) 
     return () => {
       if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
     };
-  }, [phase, drawFrame]);
+  }, [phase, drawFrame, flyStartRef]);
 
   // Resize canvas to match container
   useEffect(() => {
@@ -199,41 +263,35 @@ export function GameCanvas({ gameState, countdown, winFlash }: GameCanvasProps) 
       <canvas ref={canvasRef} className="absolute inset-0 w-full h-full pointer-events-none" />
 
       {/* Rocket emoji at curve tip */}
-      {(isFlying || isCrashed) && rocketPos.x > 0 && (
+      <div
+        ref={rocketRef}
+        className="absolute pointer-events-none select-none"
+        style={{
+          display:     'none',
+          fontSize:    '32px',
+          lineHeight:  1,
+          transition:  'filter 0.3s',
+        }}
+      >
+        🚀
         <div
-          className="absolute pointer-events-none select-none"
+          ref={flameRef}
+          className="absolute top-full left-1/2 -translate-x-1/2 w-4 h-6 rounded-full animate-pulse"
           style={{
-            left:        rocketPos.x - 18,
-            top:         rocketPos.y - 18,
-            fontSize:    '32px',
-            lineHeight:  1,
-            transform:   `rotate(${rocketPos.angle + 90}deg)`,
-            filter:      isCrashed ? 'grayscale(1) opacity(0.4)' : 'drop-shadow(0 0 8px rgba(255,107,0,0.8))',
-            transition:  'filter 0.3s',
+            background: 'linear-gradient(to bottom, #ff6b00, #ffcc00, transparent)',
+            filter: 'blur(3px)',
+            transform: `translateX(-50%) rotate(180deg)`,
+            display: 'none',
           }}
-        >
-          🚀
-          {isFlying && (
-            <div
-              className="absolute top-full left-1/2 -translate-x-1/2 w-4 h-6 rounded-full animate-pulse"
-              style={{
-                background: 'linear-gradient(to bottom, #ff6b00, #ffcc00, transparent)',
-                filter: 'blur(3px)',
-                transform: `translateX(-50%) rotate(180deg)`,
-              }}
-            />
-          )}
-        </div>
-      )}
+        />
+      </div>
 
       {/* Central display */}
       <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
         <motion.span
+          ref={multiplierTextRef}
           className={cn(
-            'font-mono font-black tracking-tighter select-none drop-shadow-2xl',
-            isCrashed ? 'text-destructive text-7xl md:text-9xl' :
-            isFlying  ? 'text-white text-6xl md:text-8xl' :
-                        'text-white/30 text-5xl md:text-7xl'
+            'font-mono font-black tracking-tighter select-none drop-shadow-2xl text-white/30 text-5xl md:text-7xl'
           )}
           animate={isFlying ? { textShadow: ['0 0 20px rgba(255,255,255,0.3)', '0 0 40px rgba(255,255,255,0.6)', '0 0 20px rgba(255,255,255,0.3)'] } : {}}
           transition={{ repeat: Infinity, duration: 1.5 }}
