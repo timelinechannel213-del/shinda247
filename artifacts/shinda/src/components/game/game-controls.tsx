@@ -1,10 +1,12 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { Button }   from '@/components/ui/button';
 import { Input }    from '@/components/ui/input';
 import { Hash, Settings2, Wifi, WifiOff } from 'lucide-react';
 import { useAuth }  from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import type { GameState, ActiveBet } from '@/hooks/use-game-socket';
+import { elapsedToMultiplier } from '@/hooks/use-game-socket';
+import { cn } from '@/lib/utils';
 
 interface WinFlash {
   payoutCents: number;
@@ -17,9 +19,10 @@ interface GameControlsProps {
   connected:   boolean;
   send:        (type: string, data?: unknown) => void;
   onWin?:      (flash: WinFlash) => void;
+  flyStartRef?: React.MutableRefObject<number | null>;
 }
 
-export function GameControls({ gameState, activeBets, connected, send, onWin }: GameControlsProps) {
+export function GameControls({ gameState, activeBets, connected, send, onWin, flyStartRef }: GameControlsProps) {
   const { token, userId, refreshBalance } = useAuth();
   const { toast } = useToast();
 
@@ -28,6 +31,8 @@ export function GameControls({ gameState, activeBets, connected, send, onWin }: 
   const [pending, setPending]   = useState(false);
 
   const prevRoundId = useRef<number>(0);
+  const actionButtonRef = useRef<HTMLButtonElement>(null);
+  const rafRef = useRef<number | null>(null);
 
   const { phase, multiplier, roundId, id } = gameState;
 
@@ -70,7 +75,12 @@ export function GameControls({ gameState, activeBets, connected, send, onWin }: 
 
   const handleCashOut = async () => {
     if (!token) return;
-    const cashoutMultiplier = multiplier;
+
+    // Use precise real-time multiplier at the millisecond of interaction
+    const start = flyStartRef?.current ?? Date.now();
+    const elapsed = Date.now() - start;
+    const cashoutMultiplier = elapsedToMultiplier(elapsed);
+
     setPending(true);
     try {
       const res  = await fetch('/api/game/cashout', {
@@ -95,6 +105,61 @@ export function GameControls({ gameState, activeBets, connected, send, onWin }: 
   const cashoutValue = myBet
     ? ((myBet.amountCents / 100) * multiplier).toFixed(2)
     : (parseFloat(amount || '0') * multiplier).toFixed(2);
+
+  // Sync button text immediately on state-driven re-renders to prevent flickering/snapping
+  useLayoutEffect(() => {
+    const btn = actionButtonRef.current;
+    if (!btn) return;
+
+    if (canCashOut) {
+      const start = flyStartRef?.current ?? Date.now();
+      const elapsed = Date.now() - start;
+      const currentMultiplier = elapsedToMultiplier(elapsed);
+      const betAmount = myBet ? myBet.amountCents : Math.round(parseFloat(amount || '0') * 100);
+      const value = ((betAmount / 100) * currentMultiplier).toFixed(2);
+      btn.textContent = pending ? 'CASHING OUT...' : `CASH OUT\nKES ${value}`;
+    }
+  }, [phase, canCashOut, pending, amount, myBet, flyStartRef]);
+
+  // High-frequency RAF loop for cashout display
+  useEffect(() => {
+    if (phase !== 'flying' || !canCashOut) {
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+      return;
+    }
+
+    const updateCashoutText = () => {
+      const btn = actionButtonRef.current;
+      if (!btn) return;
+
+      const start = flyStartRef?.current ?? Date.now();
+      const elapsed = Date.now() - start;
+      const currentMultiplier = elapsedToMultiplier(elapsed);
+
+      const betAmount = myBet ? myBet.amountCents : Math.round(parseFloat(amount || '0') * 100);
+      const value = ((betAmount / 100) * currentMultiplier).toFixed(2);
+
+      if (pending) {
+        btn.textContent = 'CASHING OUT...';
+      } else {
+        btn.textContent = `CASH OUT\nKES ${value}`;
+      }
+
+      rafRef.current = requestAnimationFrame(updateCashoutText);
+    };
+
+    updateCashoutText();
+
+    return () => {
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+    };
+  }, [phase, canCashOut, pending, amount, myBet, flyStartRef]);
 
   return (
     <div className="w-full bg-card rounded-2xl border border-border/50 p-4 md:p-6 shadow-xl flex flex-col md:flex-row gap-4 lg:gap-8 shrink-0">
@@ -146,27 +211,34 @@ export function GameControls({ gameState, activeBets, connected, send, onWin }: 
       </div>
 
       <div className="w-full md:w-[300px] flex items-end">
-        {canCashOut ? (
-          <Button size="xl" variant="success" className="w-full h-20 text-xl" onClick={handleCashOut} disabled={pending}>
-            {pending ? 'CASHING OUT...' : `CASH OUT\nKES ${cashoutValue}`}
-          </Button>
-        ) : phase === 'waiting' || phase === 'betting' ? (
-          <Button size="xl" className="w-full h-20 text-2xl" onClick={handleBet} disabled={hasBet || pending || !canBet}>
-            {pending           ? 'PLACING BET...'
-             : hasBet && cashedOut ? 'CASHED OUT ✓'
-             : hasBet           ? 'BET PLACED — WAIT'
-             : phase === 'betting' ? 'PLACE BET'
-             : 'WAITING...'}
-          </Button>
-        ) : phase === 'flying' && hasBet ? (
-          <Button size="xl" variant="success" className="w-full h-20 text-xl" onClick={handleCashOut} disabled={pending || cashedOut}>
-            {cashedOut ? 'CASHED OUT ✓' : pending ? 'CASHING OUT...' : `CASH OUT KES ${cashoutValue}`}
-          </Button>
-        ) : (
-          <Button size="xl" variant="secondary" className="w-full h-20 text-xl text-muted-foreground" disabled>
-            {phase === 'crashed' ? 'ROUND ENDED' : 'WAIT FOR BETTING'}
-          </Button>
-        )}
+        <Button
+          ref={actionButtonRef}
+          size="xl"
+          variant={canCashOut ? 'success' : (phase === 'waiting' || phase === 'betting') ? 'default' : 'secondary'}
+          className={cn(
+            "w-full h-20 text-xl font-bold whitespace-pre-line",
+            (phase === 'waiting' || phase === 'betting') && "text-2xl"
+          )}
+          disabled={
+            canCashOut ? pending :
+            (phase === 'waiting' || phase === 'betting') ? (hasBet || pending || !canBet) :
+            true
+          }
+          onClick={canCashOut ? handleCashOut : handleBet}
+        >
+          {canCashOut ? (pending ? 'CASHING OUT...' : `CASH OUT\nKES ${cashoutValue}`) :
+           (phase === 'waiting' || phase === 'betting') ? (
+             pending ? 'PLACING BET...' :
+             hasBet && cashedOut ? 'CASHED OUT ✓' :
+             hasBet ? 'BET PLACED — WAIT' :
+             phase === 'betting' ? 'PLACE BET' :
+             'WAITING...'
+           ) :
+           (phase === 'flying' && hasBet && cashedOut) ? 'CASHED OUT ✓' :
+           phase === 'crashed' ? 'ROUND ENDED' :
+           'WAIT FOR BETTING'
+          }
+        </Button>
       </div>
     </div>
   );
