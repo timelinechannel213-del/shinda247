@@ -1,0 +1,5 @@
+## 2025-07-28 - Decoupling High-Frequency 60fps Canvas Updates from React State Lifecycle
+
+**Learning:** Running high-frequency state updates (e.g., updating a multiplier value or rocket coordinate at 60fps) within a central hook (like `useGameSocket`) triggers massive React render overhead. Because React component trees are deeply nested, re-rendering the coordinator and its children 60 times per second degrades performance significantly, leading to frame drops, battery drain, and visual flickering. By decoupling the high-frequency values from React state, utilizing direct DOM manipulation via refs inside the requestAnimationFrame loop, and using `useLayoutEffect` to handle sync, we achieve near-zero-overhead 60fps rendering.
+
+**Action:** Always prefer direct DOM updates via refs for high-frequency visual elements (like tickers, progress bars, and game loops) instead of state. Bind event handlers to calculate real-time values from time refs rather than using state, and synchronize the DOM in `useLayoutEffect` to prevent flickering.
