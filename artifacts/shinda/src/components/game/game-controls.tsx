@@ -1,10 +1,10 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { Button }   from '@/components/ui/button';
 import { Input }    from '@/components/ui/input';
 import { Hash, Settings2, Wifi, WifiOff } from 'lucide-react';
 import { useAuth }  from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
-import type { GameState, ActiveBet } from '@/hooks/use-game-socket';
+import { elapsedToMultiplier, type GameState, type ActiveBet } from '@/hooks/use-game-socket';
 
 interface WinFlash {
   payoutCents: number;
@@ -17,9 +17,10 @@ interface GameControlsProps {
   connected:   boolean;
   send:        (type: string, data?: unknown) => void;
   onWin?:      (flash: WinFlash) => void;
+  flyStartRef: React.RefObject<number | null>;
 }
 
-export function GameControls({ gameState, activeBets, connected, send, onWin }: GameControlsProps) {
+export function GameControls({ gameState, activeBets, connected, send, onWin, flyStartRef }: GameControlsProps) {
   const { token, userId, refreshBalance } = useAuth();
   const { toast } = useToast();
 
@@ -37,11 +38,55 @@ export function GameControls({ gameState, activeBets, connected, send, onWin }: 
   const canBet    = !hasBet && (phase === 'waiting' || phase === 'betting') && connected;
   const canCashOut = hasBet && !cashedOut && phase === 'flying';
 
+  const cashoutValueRef = useRef<HTMLSpanElement>(null);
+  const controlsRafRef  = useRef<number | null>(null);
+
   useEffect(() => {
     if (id !== prevRoundId.current && phase === 'waiting') {
       prevRoundId.current = id;
     }
   }, [id, phase]);
+
+  // Synchronize cashout text directly to the DOM immediately after any React re-render
+  useLayoutEffect(() => {
+    if (phase === 'flying' && hasBet && !cashedOut && flyStartRef.current && cashoutValueRef.current) {
+      const elapsed = Date.now() - flyStartRef.current;
+      const currentMultiplier = Math.exp(elapsed / 35000);
+      const betAmount = myBet ? (myBet.amountCents / 100) : parseFloat(amount || '0');
+      const val = (betAmount * currentMultiplier).toFixed(2);
+      cashoutValueRef.current.textContent = `KES ${val}`;
+    }
+  }, [phase, hasBet, cashedOut, flyStartRef, myBet, amount]);
+
+  // Handle high-frequency 60fps DOM updates during flight
+  useEffect(() => {
+    if (phase !== 'flying' || !hasBet || cashedOut) {
+      if (controlsRafRef.current) {
+        cancelAnimationFrame(controlsRafRef.current);
+        controlsRafRef.current = null;
+      }
+      return;
+    }
+
+    const tick = () => {
+      if (flyStartRef.current && cashoutValueRef.current) {
+        const elapsed = Date.now() - flyStartRef.current;
+        const currentMultiplier = Math.exp(elapsed / 35000);
+        const betAmount = myBet ? (myBet.amountCents / 100) : parseFloat(amount || '0');
+        const val = (betAmount * currentMultiplier).toFixed(2);
+        cashoutValueRef.current.textContent = `KES ${val}`;
+      }
+      controlsRafRef.current = requestAnimationFrame(tick);
+    };
+
+    controlsRafRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (controlsRafRef.current) {
+        cancelAnimationFrame(controlsRafRef.current);
+        controlsRafRef.current = null;
+      }
+    };
+  }, [phase, hasBet, cashedOut, flyStartRef, myBet, amount]);
 
   const handleBet = async () => {
     if (!token) { toast({ title: 'Login required', variant: 'destructive' }); return; }
@@ -70,7 +115,8 @@ export function GameControls({ gameState, activeBets, connected, send, onWin }: 
 
   const handleCashOut = async () => {
     if (!token) return;
-    const cashoutMultiplier = multiplier;
+    const elapsed = flyStartRef.current ? Date.now() - flyStartRef.current : 0;
+    const cashoutMultiplier = elapsed > 0 ? elapsedToMultiplier(elapsed) : 1.0;
     setPending(true);
     try {
       const res  = await fetch('/api/game/cashout', {
@@ -148,7 +194,12 @@ export function GameControls({ gameState, activeBets, connected, send, onWin }: 
       <div className="w-full md:w-[300px] flex items-end">
         {canCashOut ? (
           <Button size="xl" variant="success" className="w-full h-20 text-xl" onClick={handleCashOut} disabled={pending}>
-            {pending ? 'CASHING OUT...' : `CASH OUT\nKES ${cashoutValue}`}
+            {pending ? 'CASHING OUT...' : (
+              <span className="whitespace-pre-line text-center">
+                CASH OUT{"\n"}
+                <span ref={cashoutValueRef}>KES {cashoutValue}</span>
+              </span>
+            )}
           </Button>
         ) : phase === 'waiting' || phase === 'betting' ? (
           <Button size="xl" className="w-full h-20 text-2xl" onClick={handleBet} disabled={hasBet || pending || !canBet}>
@@ -160,7 +211,9 @@ export function GameControls({ gameState, activeBets, connected, send, onWin }: 
           </Button>
         ) : phase === 'flying' && hasBet ? (
           <Button size="xl" variant="success" className="w-full h-20 text-xl" onClick={handleCashOut} disabled={pending || cashedOut}>
-            {cashedOut ? 'CASHED OUT ✓' : pending ? 'CASHING OUT...' : `CASH OUT KES ${cashoutValue}`}
+            {cashedOut ? 'CASHED OUT ✓' : pending ? 'CASHING OUT...' : (
+              <span>CASH OUT <span ref={cashoutValueRef}>KES {cashoutValue}</span></span>
+            )}
           </Button>
         ) : (
           <Button size="xl" variant="secondary" className="w-full h-20 text-xl text-muted-foreground" disabled>
