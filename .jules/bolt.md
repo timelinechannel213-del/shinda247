@@ -1,0 +1,3 @@
+## 2025-02-28 - Decoupling High-Frequency Updates from React State
+**Learning:** High-frequency updates like the 60fps rocket multiplier ticks, drawing frames, and live cashout calculations trigger massive React render tree overhead. By tracking elapsed time in stable refs (e.g., `flyStartRef`) and updating DOM elements directly (`element.style`, `element.textContent`), we eliminate massive re-render overhead while retaining smooth, lag-free UI updates.
+**Action:** Decouple frequent visual rendering components from React state using `useRef` and direct manual DOM manipulation inside `requestAnimationFrame` ticks, and use `useLayoutEffect` to synchronize the layout after React re-renders to prevent layout flicker/snap back to state values.

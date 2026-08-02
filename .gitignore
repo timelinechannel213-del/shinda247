@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.tsbuildinfo
+.replit
+.replit.backup
+*.log
+.pnpm-store/
