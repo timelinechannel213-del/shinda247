@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useMemo, useState } from 'react';
+import { useEffect, useRef, useCallback, useMemo, useState, useLayoutEffect } from 'react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import type { GameState } from '@/hooks/use-game-socket';
@@ -15,16 +15,20 @@ interface GameCanvasProps {
   gameState: GameState;
   countdown?: number | null;
   winFlash?: WinFlash | null;
+  flyStartRef: React.RefObject<number | null>;
 }
 
-export function GameCanvas({ gameState, countdown, winFlash }: GameCanvasProps) {
+export function GameCanvas({ gameState, countdown, winFlash, flyStartRef }: GameCanvasProps) {
   const canvasRef    = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const pointsRef    = useRef<Array<{ t: number; m: number }>>([]);
-  const flyStartRef  = useRef<number | null>(null);
+  const internalFlyStartRef = useRef<number | null>(null);
   const rafRef       = useRef<number | null>(null);
 
-  const [rocketPos, setRocketPos]     = useState({ x: -100, y: -100, angle: -45 });
+  const multiplierTextRef = useRef<HTMLSpanElement>(null);
+  const rocketRef = useRef<HTMLDivElement>(null);
+  const rocketFlameRef = useRef<HTMLDivElement>(null);
+
   const [flashVisible, setFlashVisible] = useState(false);
 
   const { phase, multiplier, crashedAt } = gameState;
@@ -102,7 +106,13 @@ export function GameCanvas({ gameState, countdown, winFlash }: GameCanvasProps) 
       const dy = toY(lastPt.m) - toY(prev.m);
       angle = Math.atan2(dy, dx) * (180 / Math.PI);
     }
-    setRocketPos({ x: rx, y: ry, angle });
+
+    // Direct DOM updates for rocket instead of setting state
+    if (rocketRef.current) {
+      rocketRef.current.style.left = `${rx - 18}px`;
+      rocketRef.current.style.top = `${ry - 18}px`;
+      rocketRef.current.style.transform = `rotate(${angle + 90}deg)`;
+    }
   }, [isCrashed]);
 
   // Flying phase — RAF loop
@@ -111,26 +121,63 @@ export function GameCanvas({ gameState, countdown, winFlash }: GameCanvasProps) 
       if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
       if (phase === 'waiting' || phase === 'betting') {
         pointsRef.current = [];
-        flyStartRef.current = null;
+        internalFlyStartRef.current = null;
         const canvas = canvasRef.current;
         if (canvas) canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height);
-        setRocketPos({ x: -100, y: -100, angle: -45 });
+
+        // Direct DOM updates to hide/reset elements
+        if (rocketRef.current) {
+          rocketRef.current.style.display = 'none';
+          rocketRef.current.style.left = '-100px';
+          rocketRef.current.style.top = '-100px';
+        }
+        if (rocketFlameRef.current) {
+          rocketFlameRef.current.style.display = 'none';
+        }
+        if (multiplierTextRef.current) {
+          multiplierTextRef.current.textContent = `${displayMultiplier.toFixed(2)}x`;
+        }
       }
       if (phase === 'crashed') {
         drawFrame(); // freeze curve
+        if (rocketRef.current) {
+          rocketRef.current.style.display = 'block';
+          rocketRef.current.style.filter = 'grayscale(1) opacity(0.4)';
+        }
+        if (rocketFlameRef.current) {
+          rocketFlameRef.current.style.display = 'none';
+        }
+        if (multiplierTextRef.current) {
+          multiplierTextRef.current.textContent = `${displayMultiplier.toFixed(2)}x`;
+        }
       }
       return;
     }
 
     pointsRef.current = [];
-    flyStartRef.current = Date.now();
+    internalFlyStartRef.current = Date.now();
+
+    if (rocketRef.current) {
+      rocketRef.current.style.display = 'block';
+      rocketRef.current.style.filter = 'drop-shadow(0 0 8px rgba(255,107,0,0.8))';
+    }
+    if (rocketFlameRef.current) {
+      rocketFlameRef.current.style.display = 'block';
+    }
 
     const tick = () => {
-      const elapsed = Date.now() - (flyStartRef.current ?? Date.now());
+      // Prioritize the shared flyStartRef from useGameSocket to ensure exact synchronization
+      const startMs = flyStartRef.current ?? internalFlyStartRef.current ?? Date.now();
+      const elapsed = Date.now() - startMs;
       const m = exp(elapsed);
       pointsRef.current.push({ t: elapsed, m });
       if (pointsRef.current.length > 3000) pointsRef.current.shift();
       drawFrame();
+
+      if (multiplierTextRef.current) {
+        multiplierTextRef.current.textContent = `${m.toFixed(2)}x`;
+      }
+
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);
@@ -138,7 +185,60 @@ export function GameCanvas({ gameState, countdown, winFlash }: GameCanvasProps) 
     return () => {
       if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
     };
-  }, [phase, drawFrame]);
+  }, [phase, drawFrame, displayMultiplier, flyStartRef]);
+
+  // Synchronize on mount and after any React re-render to avoid visual snapping or resetting
+  useLayoutEffect(() => {
+    const startMs = flyStartRef.current;
+    if (phase === 'flying' && startMs) {
+      const elapsed = Date.now() - startMs;
+      const m = exp(elapsed);
+      if (multiplierTextRef.current) {
+        multiplierTextRef.current.textContent = `${m.toFixed(2)}x`;
+      }
+      if (rocketRef.current) {
+        rocketRef.current.style.display = 'block';
+        rocketRef.current.style.filter = 'drop-shadow(0 0 8px rgba(255,107,0,0.8))';
+      }
+      if (rocketFlameRef.current) {
+        rocketFlameRef.current.style.display = 'block';
+      }
+
+      // Ensure points are populated to immediately draw the line after a re-render
+      if (pointsRef.current.length === 0) {
+        pointsRef.current = Array.from({ length: 10 }).map((_, idx) => {
+          const t = (elapsed / 9) * idx;
+          return { t, m: exp(t) };
+        });
+      }
+      drawFrame();
+    } else {
+      if (multiplierTextRef.current) {
+        multiplierTextRef.current.textContent = `${displayMultiplier.toFixed(2)}x`;
+      }
+      if (phase === 'crashed') {
+        if (rocketRef.current) {
+          rocketRef.current.style.display = 'block';
+          rocketRef.current.style.filter = 'grayscale(1) opacity(0.4)';
+        }
+        if (rocketFlameRef.current) {
+          rocketFlameRef.current.style.display = 'none';
+        }
+        drawFrame();
+      } else {
+        if (rocketRef.current) {
+          rocketRef.current.style.display = 'none';
+          rocketRef.current.style.left = '-100px';
+          rocketRef.current.style.top = '-100px';
+        }
+        if (rocketFlameRef.current) {
+          rocketFlameRef.current.style.display = 'none';
+        }
+        const canvas = canvasRef.current;
+        if (canvas) canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height);
+      }
+    }
+  }, [phase, displayMultiplier, flyStartRef, drawFrame]);
 
   // Resize canvas to match container
   useEffect(() => {
@@ -198,37 +298,38 @@ export function GameCanvas({ gameState, countdown, winFlash }: GameCanvasProps) 
       {/* Exponential curve */}
       <canvas ref={canvasRef} className="absolute inset-0 w-full h-full pointer-events-none" />
 
-      {/* Rocket emoji at curve tip */}
-      {(isFlying || isCrashed) && rocketPos.x > 0 && (
+      {/* Rocket emoji at curve tip - rendered unconditionally for DOM ref access */}
+      <div
+        ref={rocketRef}
+        className="absolute pointer-events-none select-none"
+        style={{
+          display:    'none',
+          left:       '-100px',
+          top:        '-100px',
+          fontSize:   '32px',
+          lineHeight: 1,
+          transform:  'rotate(45deg)',
+          filter:     'drop-shadow(0 0 8px rgba(255,107,0,0.8))',
+          transition: 'filter 0.3s',
+        }}
+      >
+        🚀
         <div
-          className="absolute pointer-events-none select-none"
+          ref={rocketFlameRef}
+          className="absolute top-full left-1/2 -translate-x-1/2 w-4 h-6 rounded-full animate-pulse"
           style={{
-            left:        rocketPos.x - 18,
-            top:         rocketPos.y - 18,
-            fontSize:    '32px',
-            lineHeight:  1,
-            transform:   `rotate(${rocketPos.angle + 90}deg)`,
-            filter:      isCrashed ? 'grayscale(1) opacity(0.4)' : 'drop-shadow(0 0 8px rgba(255,107,0,0.8))',
-            transition:  'filter 0.3s',
+            display:    'none',
+            background: 'linear-gradient(to bottom, #ff6b00, #ffcc00, transparent)',
+            filter:     'blur(3px)',
+            transform:  `translateX(-50%) rotate(180deg)`,
           }}
-        >
-          🚀
-          {isFlying && (
-            <div
-              className="absolute top-full left-1/2 -translate-x-1/2 w-4 h-6 rounded-full animate-pulse"
-              style={{
-                background: 'linear-gradient(to bottom, #ff6b00, #ffcc00, transparent)',
-                filter: 'blur(3px)',
-                transform: `translateX(-50%) rotate(180deg)`,
-              }}
-            />
-          )}
-        </div>
-      )}
+        />
+      </div>
 
       {/* Central display */}
       <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
         <motion.span
+          ref={multiplierTextRef}
           className={cn(
             'font-mono font-black tracking-tighter select-none drop-shadow-2xl',
             isCrashed ? 'text-destructive text-7xl md:text-9xl' :
