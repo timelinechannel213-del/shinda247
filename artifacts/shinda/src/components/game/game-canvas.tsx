@@ -20,11 +20,11 @@ interface GameCanvasProps {
 export function GameCanvas({ gameState, countdown, winFlash }: GameCanvasProps) {
   const canvasRef    = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const rocketRef    = useRef<HTMLDivElement>(null);
   const pointsRef    = useRef<Array<{ t: number; m: number }>>([]);
   const flyStartRef  = useRef<number | null>(null);
   const rafRef       = useRef<number | null>(null);
 
-  const [rocketPos, setRocketPos]     = useState({ x: -100, y: -100, angle: -45 });
   const [flashVisible, setFlashVisible] = useState(false);
 
   const { phase, multiplier, crashedAt } = gameState;
@@ -102,7 +102,14 @@ export function GameCanvas({ gameState, countdown, winFlash }: GameCanvasProps) 
       const dy = toY(lastPt.m) - toY(prev.m);
       angle = Math.atan2(dy, dx) * (180 / Math.PI);
     }
-    setRocketPos({ x: rx, y: ry, angle });
+
+    // ⚡ Bolt: Direct DOM manipulation for rocket positioning bypasses 60 FPS React re-renders during flight
+    if (rocketRef.current) {
+      rocketRef.current.style.left = `${rx - 18}px`;
+      rocketRef.current.style.top = `${ry - 18}px`;
+      rocketRef.current.style.transform = `rotate(${angle + 90}deg)`;
+      rocketRef.current.style.display = rx > 0 ? 'block' : 'none';
+    }
   }, [isCrashed]);
 
   // Flying phase — RAF loop
@@ -114,7 +121,9 @@ export function GameCanvas({ gameState, countdown, winFlash }: GameCanvasProps) 
         flyStartRef.current = null;
         const canvas = canvasRef.current;
         if (canvas) canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height);
-        setRocketPos({ x: -100, y: -100, angle: -45 });
+        if (rocketRef.current) {
+          rocketRef.current.style.display = 'none';
+        }
       }
       if (phase === 'crashed') {
         drawFrame(); // freeze curve
@@ -198,18 +207,17 @@ export function GameCanvas({ gameState, countdown, winFlash }: GameCanvasProps) 
       {/* Exponential curve */}
       <canvas ref={canvasRef} className="absolute inset-0 w-full h-full pointer-events-none" />
 
-      {/* Rocket emoji at curve tip */}
-      {(isFlying || isCrashed) && rocketPos.x > 0 && (
+      {/* Rocket emoji at curve tip - updated directly via rocketRef at 60fps */}
+      {(isFlying || isCrashed) && (
         <div
+          ref={rocketRef}
           className="absolute pointer-events-none select-none"
           style={{
-            left:        rocketPos.x - 18,
-            top:         rocketPos.y - 18,
             fontSize:    '32px',
             lineHeight:  1,
-            transform:   `rotate(${rocketPos.angle + 90}deg)`,
             filter:      isCrashed ? 'grayscale(1) opacity(0.4)' : 'drop-shadow(0 0 8px rgba(255,107,0,0.8))',
             transition:  'filter 0.3s',
+            display:     'none',
           }}
         >
           🚀
