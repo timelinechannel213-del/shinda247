@@ -1,10 +1,10 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { Button }   from '@/components/ui/button';
 import { Input }    from '@/components/ui/input';
 import { Hash, Settings2, Wifi, WifiOff } from 'lucide-react';
 import { useAuth }  from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
-import type { GameState, ActiveBet } from '@/hooks/use-game-socket';
+import { elapsedToMultiplier, type GameState, type ActiveBet } from '@/hooks/use-game-socket';
 
 interface WinFlash {
   payoutCents: number;
@@ -17,9 +17,10 @@ interface GameControlsProps {
   connected:   boolean;
   send:        (type: string, data?: unknown) => void;
   onWin?:      (flash: WinFlash) => void;
+  flyStartRef?: React.RefObject<number | null>;
 }
 
-export function GameControls({ gameState, activeBets, connected, send, onWin }: GameControlsProps) {
+export function GameControls({ gameState, activeBets, connected, send, onWin, flyStartRef }: GameControlsProps) {
   const { token, userId, refreshBalance } = useAuth();
   const { toast } = useToast();
 
@@ -28,6 +29,7 @@ export function GameControls({ gameState, activeBets, connected, send, onWin }: 
   const [pending, setPending]   = useState(false);
 
   const prevRoundId = useRef<number>(0);
+  const cashoutTextRef = useRef<HTMLSpanElement>(null);
 
   const { phase, multiplier, roundId, id } = gameState;
 
@@ -37,11 +39,48 @@ export function GameControls({ gameState, activeBets, connected, send, onWin }: 
   const canBet    = !hasBet && (phase === 'waiting' || phase === 'betting') && connected;
   const canCashOut = hasBet && !cashedOut && phase === 'flying';
 
+  const baseBetAmount = myBet ? (myBet.amountCents / 100) : (parseFloat(amount || '0'));
+
   useEffect(() => {
     if (id !== prevRoundId.current && phase === 'waiting') {
       prevRoundId.current = id;
     }
   }, [id, phase]);
+
+  // High-frequency direct DOM update for the cash out button amount during flight
+  useEffect(() => {
+    if (!canCashOut) return;
+
+    let rafId: number;
+    const updateCashoutText = () => {
+      if (cashoutTextRef.current) {
+        let currentMult = multiplier;
+        if (flyStartRef?.current) {
+          const elapsed = Math.max(0, Date.now() - flyStartRef.current);
+          currentMult = elapsedToMultiplier(elapsed);
+        }
+        const value = (baseBetAmount * currentMult).toFixed(2);
+        cashoutTextRef.current.textContent = `KES ${value}`;
+      }
+      rafId = requestAnimationFrame(updateCashoutText);
+    };
+
+    updateCashoutText();
+    return () => cancelAnimationFrame(rafId);
+  }, [canCashOut, baseBetAmount, multiplier, flyStartRef]);
+
+  // Resync DOM after React re-renders to prevent flickering
+  useLayoutEffect(() => {
+    if (cashoutTextRef.current && canCashOut) {
+      let currentMult = multiplier;
+      if (flyStartRef?.current) {
+        const elapsed = Math.max(0, Date.now() - flyStartRef.current);
+        currentMult = elapsedToMultiplier(elapsed);
+      }
+      const value = (baseBetAmount * currentMult).toFixed(2);
+      cashoutTextRef.current.textContent = `KES ${value}`;
+    }
+  }, [canCashOut, baseBetAmount, multiplier, flyStartRef]);
 
   const handleBet = async () => {
     if (!token) { toast({ title: 'Login required', variant: 'destructive' }); return; }
@@ -70,7 +109,11 @@ export function GameControls({ gameState, activeBets, connected, send, onWin }: 
 
   const handleCashOut = async () => {
     if (!token) return;
-    const cashoutMultiplier = multiplier;
+    let cashoutMultiplier = multiplier;
+    if (flyStartRef?.current) {
+      const elapsed = Math.max(0, Date.now() - flyStartRef.current);
+      cashoutMultiplier = elapsedToMultiplier(elapsed);
+    }
     setPending(true);
     try {
       const res  = await fetch('/api/game/cashout', {
@@ -92,9 +135,7 @@ export function GameControls({ gameState, activeBets, connected, send, onWin }: 
     }
   };
 
-  const cashoutValue = myBet
-    ? ((myBet.amountCents / 100) * multiplier).toFixed(2)
-    : (parseFloat(amount || '0') * multiplier).toFixed(2);
+  const initialCashoutValue = (baseBetAmount * multiplier).toFixed(2);
 
   return (
     <div className="w-full bg-card rounded-2xl border border-border/50 p-4 md:p-6 shadow-xl flex flex-col md:flex-row gap-4 lg:gap-8 shrink-0">
@@ -148,7 +189,14 @@ export function GameControls({ gameState, activeBets, connected, send, onWin }: 
       <div className="w-full md:w-[300px] flex items-end">
         {canCashOut ? (
           <Button size="xl" variant="success" className="w-full h-20 text-xl" onClick={handleCashOut} disabled={pending}>
-            {pending ? 'CASHING OUT...' : `CASH OUT\nKES ${cashoutValue}`}
+            {pending ? (
+              'CASHING OUT...'
+            ) : (
+              <span className="flex flex-col items-center">
+                <span>CASH OUT</span>
+                <span ref={cashoutTextRef}>KES {initialCashoutValue}</span>
+              </span>
+            )}
           </Button>
         ) : phase === 'waiting' || phase === 'betting' ? (
           <Button size="xl" className="w-full h-20 text-2xl" onClick={handleBet} disabled={hasBet || pending || !canBet}>
@@ -160,7 +208,16 @@ export function GameControls({ gameState, activeBets, connected, send, onWin }: 
           </Button>
         ) : phase === 'flying' && hasBet ? (
           <Button size="xl" variant="success" className="w-full h-20 text-xl" onClick={handleCashOut} disabled={pending || cashedOut}>
-            {cashedOut ? 'CASHED OUT ✓' : pending ? 'CASHING OUT...' : `CASH OUT KES ${cashoutValue}`}
+            {cashedOut ? (
+              'CASHED OUT ✓'
+            ) : pending ? (
+              'CASHING OUT...'
+            ) : (
+              <span className="flex flex-col items-center">
+                <span>CASH OUT</span>
+                <span ref={cashoutTextRef}>KES {initialCashoutValue}</span>
+              </span>
+            )}
           </Button>
         ) : (
           <Button size="xl" variant="secondary" className="w-full h-20 text-xl text-muted-foreground" disabled>

@@ -35,32 +35,16 @@ export function useGameSocket(token: string | null) {
   const [countdown, setCountdown]   = useState<number | null>(null);
 
   const wsRef             = useRef<WebSocket | null>(null);
-  const rafRef            = useRef<number | null>(null);
   const flyStartRef       = useRef<number | null>(null);
   const countdownRef      = useRef<ReturnType<typeof setInterval> | null>(null);
   const bettingEndsAtRef  = useRef<number | null>(null);
-  // Stable ref so canvas can read multiplier without re-subscribing
   const elapsedRef        = useRef<number>(0);
 
-  const startTicker = useCallback(() => {
-    if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    flyStartRef.current = Date.now();
-
-    const tick = () => {
-      const elapsed = Date.now() - (flyStartRef.current ?? Date.now());
-      elapsedRef.current = elapsed;
-      setGameState(s => ({
-        ...s,
-        elapsedMs:  elapsed,
-        multiplier: elapsedToMultiplier(elapsed),
-      }));
-      rafRef.current = requestAnimationFrame(tick);
-    };
-    rafRef.current = requestAnimationFrame(tick);
+  const startFlight = useCallback((initialElapsedMs = 0) => {
+    flyStartRef.current = Date.now() - initialElapsedMs;
   }, []);
 
-  const stopTicker = useCallback(() => {
-    if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+  const stopFlight = useCallback(() => {
     flyStartRef.current = null;
   }, []);
 
@@ -89,7 +73,7 @@ export function useGameSocket(token: string | null) {
     switch (type) {
       case '1501': {
         const d = data as { id: number; wait_ms?: number };
-        stopTicker();
+        stopFlight();
         stopCountdown();
         setActiveBets([]);
         setGameState(s => ({
@@ -107,22 +91,21 @@ export function useGameSocket(token: string | null) {
       }
       case '1502': {
         stopCountdown();
-        startTicker();
+        startFlight(0);
         setGameState(s => ({ ...s, phase: 'flying', multiplier: 1.0, elapsedMs: 0 }));
         break;
       }
       case '1503': {
-        // Server tick — used to correct drift. We already interpolate at 60fps.
+        // Server tick — used to correct drift for smooth high-frequency DOM animation
         const elapsed = Number(data);
         if (flyStartRef.current) {
-          // Correct flyStart based on authoritative server time
           flyStartRef.current = Date.now() - elapsed;
         }
         break;
       }
       case '1504': {
         const d = data as { gameCrash: number; elapsed: number; gameHash: string };
-        stopTicker();
+        stopFlight();
         stopCountdown();
         setGameState(s => ({
           ...s, phase: 'crashed', multiplier: d.gameCrash,
@@ -170,13 +153,14 @@ export function useGameSocket(token: string | null) {
           playerCount: d.playerCount, totalBetsCents: d.totalBetsCents,
         }));
         if (phase === 'flying') {
-          flyStartRef.current = Date.now() - d.elapsedMs;
-          startTicker();
+          startFlight(d.elapsedMs);
+        } else {
+          stopFlight();
         }
         break;
       }
     }
-  }, [startTicker, stopTicker, startCountdown, stopCountdown]);
+  }, [startFlight, stopFlight, startCountdown, stopCountdown]);
 
   const connect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
@@ -203,7 +187,7 @@ export function useGameSocket(token: string | null) {
   useEffect(() => {
     connect();
     return () => {
-      stopTicker();
+      stopFlight();
       stopCountdown();
       wsRef.current?.close();
     };

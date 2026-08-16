@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, useMemo, useState } from 'react';
+import { useEffect, useRef, useCallback, useMemo, useState, useLayoutEffect } from 'react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import type { GameState } from '@/hooks/use-game-socket';
@@ -15,14 +15,16 @@ interface GameCanvasProps {
   gameState: GameState;
   countdown?: number | null;
   winFlash?: WinFlash | null;
+  flyStartRef?: React.RefObject<number | null>;
 }
 
-export function GameCanvas({ gameState, countdown, winFlash }: GameCanvasProps) {
-  const canvasRef    = useRef<HTMLCanvasElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const pointsRef    = useRef<Array<{ t: number; m: number }>>([]);
-  const flyStartRef  = useRef<number | null>(null);
-  const rafRef       = useRef<number | null>(null);
+export function GameCanvas({ gameState, countdown, winFlash, flyStartRef }: GameCanvasProps) {
+  const canvasRef     = useRef<HTMLCanvasElement>(null);
+  const containerRef  = useRef<HTMLDivElement>(null);
+  const multiplierRef = useRef<HTMLSpanElement>(null);
+  const pointsRef     = useRef<Array<{ t: number; m: number }>>([]);
+  const localFlyStart = useRef<number | null>(null);
+  const rafRef        = useRef<number | null>(null);
 
   const [rocketPos, setRocketPos]     = useState({ x: -100, y: -100, angle: -45 });
   const [flashVisible, setFlashVisible] = useState(false);
@@ -40,6 +42,20 @@ export function GameCanvas({ gameState, countdown, winFlash }: GameCanvasProps) 
     const t = setTimeout(() => setFlashVisible(false), 1400);
     return () => clearTimeout(t);
   }, [winFlash]);
+
+  // Synchronize manual multiplier DOM text after React re-renders to prevent stale values/flashing
+  useLayoutEffect(() => {
+    if (multiplierRef.current) {
+      if (isFlying && (flyStartRef?.current || localFlyStart.current)) {
+        const start = flyStartRef?.current ?? localFlyStart.current ?? Date.now();
+        const elapsed = Math.max(0, Date.now() - start);
+        const m = exp(elapsed);
+        multiplierRef.current.textContent = `${m.toFixed(2)}x`;
+      } else {
+        multiplierRef.current.textContent = `${displayMultiplier.toFixed(2)}x`;
+      }
+    }
+  }, [displayMultiplier, isFlying, flyStartRef]);
 
   const drawFrame = useCallback(() => {
     const canvas = canvasRef.current;
@@ -105,13 +121,13 @@ export function GameCanvas({ gameState, countdown, winFlash }: GameCanvasProps) 
     setRocketPos({ x: rx, y: ry, angle });
   }, [isCrashed]);
 
-  // Flying phase — RAF loop
+  // Flying phase — RAF loop directly updates multiplier text node at 60fps
   useEffect(() => {
     if (phase !== 'flying') {
       if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
       if (phase === 'waiting' || phase === 'betting') {
         pointsRef.current = [];
-        flyStartRef.current = null;
+        localFlyStart.current = null;
         const canvas = canvasRef.current;
         if (canvas) canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height);
         setRocketPos({ x: -100, y: -100, angle: -45 });
@@ -123,13 +139,19 @@ export function GameCanvas({ gameState, countdown, winFlash }: GameCanvasProps) 
     }
 
     pointsRef.current = [];
-    flyStartRef.current = Date.now();
+    localFlyStart.current = Date.now();
 
     const tick = () => {
-      const elapsed = Date.now() - (flyStartRef.current ?? Date.now());
+      const start = flyStartRef?.current ?? localFlyStart.current ?? Date.now();
+      const elapsed = Math.max(0, Date.now() - start);
       const m = exp(elapsed);
       pointsRef.current.push({ t: elapsed, m });
       if (pointsRef.current.length > 3000) pointsRef.current.shift();
+
+      if (multiplierRef.current) {
+        multiplierRef.current.textContent = `${m.toFixed(2)}x`;
+      }
+
       drawFrame();
       rafRef.current = requestAnimationFrame(tick);
     };
@@ -138,7 +160,7 @@ export function GameCanvas({ gameState, countdown, winFlash }: GameCanvasProps) 
     return () => {
       if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
     };
-  }, [phase, drawFrame]);
+  }, [phase, drawFrame, flyStartRef]);
 
   // Resize canvas to match container
   useEffect(() => {
@@ -229,6 +251,7 @@ export function GameCanvas({ gameState, countdown, winFlash }: GameCanvasProps) 
       {/* Central display */}
       <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
         <motion.span
+          ref={multiplierRef}
           className={cn(
             'font-mono font-black tracking-tighter select-none drop-shadow-2xl',
             isCrashed ? 'text-destructive text-7xl md:text-9xl' :
