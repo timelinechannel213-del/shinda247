@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { cn } from '@/lib/utils';
 import { History, MessageSquare, UserPlus, TrendingUp, TrendingDown } from 'lucide-react';
 import { VerifyModal } from './verify-modal';
@@ -63,12 +63,17 @@ export function HistoryPanel() {
     return () => clearInterval(iv);
   }, [activeTab, token]);
 
-  const betsStats = myBets.reduce(
-    (acc, b) => ({
-      totalBet:  acc.totalBet + b.amountCents,
-      totalWon:  acc.totalWon + (b.payoutCents ?? 0),
-    }),
-    { totalBet: 0, totalWon: 0 }
+  // Memoize bet statistics calculations to avoid unnecessary re-reductions on renders
+  const betsStats = useMemo(
+    () =>
+      myBets.reduce(
+        (acc, b) => ({
+          totalBet:  acc.totalBet + b.amountCents,
+          totalWon:  acc.totalWon + (b.payoutCents ?? 0),
+        }),
+        { totalBet: 0, totalWon: 0 }
+      ),
+    [myBets]
   );
   const netPnl = betsStats.totalWon - betsStats.totalBet;
 
