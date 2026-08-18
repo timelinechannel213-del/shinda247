@@ -42,18 +42,17 @@ export function useGameSocket(token: string | null) {
   // Stable ref so canvas can read multiplier without re-subscribing
   const elapsedRef        = useRef<number>(0);
 
+  // Decoupled ticker: updates elapsedRef without triggering 60fps React state re-renders.
+  // GameCanvas & GameControls consume flyStartRef/elapsedRef directly via RAF or useLayoutEffect.
   const startTicker = useCallback(() => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    flyStartRef.current = Date.now();
+    if (!flyStartRef.current) {
+      flyStartRef.current = Date.now();
+    }
 
     const tick = () => {
       const elapsed = Date.now() - (flyStartRef.current ?? Date.now());
       elapsedRef.current = elapsed;
-      setGameState(s => ({
-        ...s,
-        elapsedMs:  elapsed,
-        multiplier: elapsedToMultiplier(elapsed),
-      }));
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);
@@ -107,6 +106,7 @@ export function useGameSocket(token: string | null) {
       }
       case '1502': {
         stopCountdown();
+        flyStartRef.current = Date.now();
         startTicker();
         setGameState(s => ({ ...s, phase: 'flying', multiplier: 1.0, elapsedMs: 0 }));
         break;
