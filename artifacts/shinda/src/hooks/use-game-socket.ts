@@ -46,14 +46,12 @@ export function useGameSocket(token: string | null) {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     flyStartRef.current = Date.now();
 
+    // ⚡ Bolt Optimization: Decouple 60fps ticker from React state updates.
+    // Calling setGameState at 60fps causes re-renders across all child components (GameCanvas, GameControls, Topbar, etc.).
+    // Components read flyStartRef/elapsedRef directly via RAF or DOM manipulation for high-frequency updates.
     const tick = () => {
       const elapsed = Date.now() - (flyStartRef.current ?? Date.now());
       elapsedRef.current = elapsed;
-      setGameState(s => ({
-        ...s,
-        elapsedMs:  elapsed,
-        multiplier: elapsedToMultiplier(elapsed),
-      }));
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);
