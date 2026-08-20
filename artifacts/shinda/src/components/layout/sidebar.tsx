@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Link, useLocation } from "wouter";
 import { Home, Bell, History, Users, HelpCircle, Flame, UserCircle, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -11,7 +12,8 @@ const NAV_ITEMS = [
   { href: "/profile",      label: "Profile",        icon: UserCircle },
 ];
 
-export function Sidebar() {
+// ⚡ Bolt: Wrapped in React.memo to prevent re-rendering on 60fps game state updates in parent
+export const Sidebar = memo(function Sidebar() {
   const [location] = useLocation();
   const { username, balanceCents, logout } = useAuth();
 
@@ -76,4 +78,4 @@ export function Sidebar() {
       </div>
     </aside>
   );
-}
+});

@@ -29,7 +29,7 @@ export default function Home() {
       <Sidebar />
 
       <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden relative z-10">
-        <Topbar gameState={gameState} />
+        <Topbar />
 
         <main className="flex-1 overflow-y-auto p-3 md:p-6 space-y-4 md:space-y-6 pb-20 md:pb-6">
           <div className="flex flex-col gap-4 md:gap-6 max-w-5xl mx-auto w-full">
