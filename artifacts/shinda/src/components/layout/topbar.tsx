@@ -1,14 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, memo } from 'react';
 import { Wallet, Plus, Zap, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatCurrency, cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { DepositModal } from '@/components/game/deposit-modal';
-import type { GameState } from '@/hooks/use-game-socket';
-
-interface TopbarProps {
-  gameState?: GameState;
-}
 
 interface HistoryItem {
   id: number;
@@ -16,7 +11,8 @@ interface HistoryItem {
   hash: string;
 }
 
-export function Topbar({ gameState: _gameState }: TopbarProps) {
+// ⚡ Bolt: Wrapped in React.memo to prevent re-rendering on 60fps game state updates in parent
+export const Topbar = memo(function Topbar() {
   const { username, balanceCents, token, logout, refreshBalance } = useAuth();
   const [history, setHistory]         = useState<HistoryItem[]>([]);
   const [showDeposit, setShowDeposit] = useState(false);
@@ -116,4 +112,4 @@ export function Topbar({ gameState: _gameState }: TopbarProps) {
       {showDeposit && <DepositModal onClose={() => setShowDeposit(false)} />}
     </>
   );
-}
+});

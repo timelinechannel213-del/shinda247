@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, memo, useMemo } from 'react';
 import { cn } from '@/lib/utils';
 import { History, MessageSquare, UserPlus, TrendingUp, TrendingDown } from 'lucide-react';
 import { VerifyModal } from './verify-modal';
@@ -29,7 +29,8 @@ const tabs = [
   { id: 'refer',   label: 'Refer',     icon: UserPlus },
 ];
 
-export function HistoryPanel() {
+// ⚡ Bolt: Wrapped in React.memo to prevent re-rendering on 60fps game state updates in parent
+export const HistoryPanel = memo(function HistoryPanel() {
   const { token } = useAuth();
   const [activeTab, setActiveTab]     = useState('history');
   const [history, setHistory]         = useState<HistoryItem[]>([]);
@@ -63,12 +64,16 @@ export function HistoryPanel() {
     return () => clearInterval(iv);
   }, [activeTab, token]);
 
-  const betsStats = myBets.reduce(
-    (acc, b) => ({
-      totalBet:  acc.totalBet + b.amountCents,
-      totalWon:  acc.totalWon + (b.payoutCents ?? 0),
-    }),
-    { totalBet: 0, totalWon: 0 }
+  const betsStats = useMemo(
+    () =>
+      myBets.reduce(
+        (acc, b) => ({
+          totalBet:  acc.totalBet + b.amountCents,
+          totalWon:  acc.totalWon + (b.payoutCents ?? 0),
+        }),
+        { totalBet: 0, totalWon: 0 }
+      ),
+    [myBets]
   );
   const netPnl = betsStats.totalWon - betsStats.totalBet;
 
@@ -227,4 +232,4 @@ export function HistoryPanel() {
       <VerifyModal round={verifyRound} onClose={() => setVerifyRound(null)} />
     </>
   );
-}
+});
