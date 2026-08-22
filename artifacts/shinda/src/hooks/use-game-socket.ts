@@ -42,26 +42,16 @@ export function useGameSocket(token: string | null) {
   // Stable ref so canvas can read multiplier without re-subscribing
   const elapsedRef        = useRef<number>(0);
 
-  const startTicker = useCallback(() => {
+  const startTicker = useCallback((initialElapsed = 0) => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    flyStartRef.current = Date.now();
-
-    const tick = () => {
-      const elapsed = Date.now() - (flyStartRef.current ?? Date.now());
-      elapsedRef.current = elapsed;
-      setGameState(s => ({
-        ...s,
-        elapsedMs:  elapsed,
-        multiplier: elapsedToMultiplier(elapsed),
-      }));
-      rafRef.current = requestAnimationFrame(tick);
-    };
-    rafRef.current = requestAnimationFrame(tick);
+    flyStartRef.current = Date.now() - initialElapsed;
+    elapsedRef.current = initialElapsed;
   }, []);
 
   const stopTicker = useCallback(() => {
     if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
     flyStartRef.current = null;
+    elapsedRef.current = 0;
   }, []);
 
   const startCountdown = useCallback((endsAt: number) => {
@@ -170,8 +160,7 @@ export function useGameSocket(token: string | null) {
           playerCount: d.playerCount, totalBetsCents: d.totalBetsCents,
         }));
         if (phase === 'flying') {
-          flyStartRef.current = Date.now() - d.elapsedMs;
-          startTicker();
+          startTicker(d.elapsedMs);
         }
         break;
       }
