@@ -1,0 +1,7 @@
+node_modules/
+dist/
+build/
+.tsbuildinfo
+*.tsbuildinfo
+.pnpm-store/
+*.log

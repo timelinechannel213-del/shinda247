@@ -1,0 +1,3 @@
+## 2025-05-18 - Decoupling High-Frequency Socket Animation from React State
+**Learning:** Updating React state at 60fps in a socket hook (`useGameSocket`) triggers cascading re-renders across parent and sibling components (e.g., Home, Topbar, GameControls, GameCanvas). This degrades performance and frame rates, especially on low-power devices.
+**Action:** Decouple 60fps animation updates from React state by maintaining real-time timestamps in refs (`flyStartRef`) and manipulating DOM elements directly (`textContent`, `style.transform`) within `requestAnimationFrame` loops. Use `useLayoutEffect` to synchronize DOM elements immediately after occasional React state updates.
