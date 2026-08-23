@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, memo } from 'react';
 import { Wallet, Plus, Zap, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatCurrency, cn } from '@/lib/utils';
@@ -16,7 +16,8 @@ interface HistoryItem {
   hash: string;
 }
 
-export function Topbar({ gameState: _gameState }: TopbarProps) {
+// ⚡ Bolt performance optimization: Memoize Topbar component to prevent redundant re-renders when parent state updates
+export const Topbar = memo(function Topbar({ gameState: _gameState }: TopbarProps) {
   const { username, balanceCents, token, logout, refreshBalance } = useAuth();
   const [history, setHistory]         = useState<HistoryItem[]>([]);
   const [showDeposit, setShowDeposit] = useState(false);
@@ -116,4 +117,4 @@ export function Topbar({ gameState: _gameState }: TopbarProps) {
       {showDeposit && <DepositModal onClose={() => setShowDeposit(false)} />}
     </>
   );
-}
+});
