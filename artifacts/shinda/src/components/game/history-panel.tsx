@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, memo } from 'react';
 import { cn } from '@/lib/utils';
 import { History, MessageSquare, UserPlus, TrendingUp, TrendingDown } from 'lucide-react';
 import { VerifyModal } from './verify-modal';
@@ -29,7 +29,8 @@ const tabs = [
   { id: 'refer',   label: 'Refer',     icon: UserPlus },
 ];
 
-export function HistoryPanel() {
+// ⚡ Bolt: Wrap HistoryPanel with memo to prevent re-rendering on 60fps game multiplier ticker state updates
+export const HistoryPanel = memo(function HistoryPanel() {
   const { token } = useAuth();
   const [activeTab, setActiveTab]     = useState('history');
   const [history, setHistory]         = useState<HistoryItem[]>([]);
@@ -227,4 +228,4 @@ export function HistoryPanel() {
       <VerifyModal round={verifyRound} onClose={() => setVerifyRound(null)} />
     </>
   );
-}
+});
