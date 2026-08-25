@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, memo } from 'react';
 import { Trophy, Shield } from 'lucide-react';
 import { formatCurrency, cn } from '@/lib/utils';
 
@@ -9,7 +9,7 @@ interface LeaderEntry {
   cashedOutAt: number | null;
 }
 
-export function RightSidebar() {
+export const RightSidebar = memo(function RightSidebar() {
   const [players, setPlayers] = useState<LeaderEntry[]>([]);
 
   useEffect(() => {
@@ -83,4 +83,4 @@ export function RightSidebar() {
       </div>
     </aside>
   );
-}
+});
