@@ -4,7 +4,7 @@ import { Input }    from '@/components/ui/input';
 import { Hash, Settings2, Wifi, WifiOff } from 'lucide-react';
 import { useAuth }  from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
-import type { GameState, ActiveBet } from '@/hooks/use-game-socket';
+import { elapsedToMultiplier, type GameState, type ActiveBet } from '@/hooks/use-game-socket';
 
 interface WinFlash {
   payoutCents: number;
@@ -16,10 +16,11 @@ interface GameControlsProps {
   activeBets:  ActiveBet[];
   connected:   boolean;
   send:        (type: string, data?: unknown) => void;
+  flyStartRef?: React.RefObject<number | null>;
   onWin?:      (flash: WinFlash) => void;
 }
 
-export function GameControls({ gameState, activeBets, connected, send, onWin }: GameControlsProps) {
+export function GameControls({ gameState, activeBets, connected, send, flyStartRef, onWin }: GameControlsProps) {
   const { token, userId, refreshBalance } = useAuth();
   const { toast } = useToast();
 
@@ -70,7 +71,10 @@ export function GameControls({ gameState, activeBets, connected, send, onWin }: 
 
   const handleCashOut = async () => {
     if (!token) return;
-    const cashoutMultiplier = multiplier;
+    // ⚡ Bolt: Calculate real-time exact multiplier at cashout click using flyStartRef
+    // rather than potentially stale throttled React state.
+    const realTimeElapsed = flyStartRef?.current ? Date.now() - flyStartRef.current : gameState.elapsedMs;
+    const cashoutMultiplier = flyStartRef?.current ? elapsedToMultiplier(realTimeElapsed) : multiplier;
     setPending(true);
     try {
       const res  = await fetch('/api/game/cashout', {
