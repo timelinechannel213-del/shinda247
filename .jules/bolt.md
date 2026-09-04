@@ -1,0 +1,3 @@
+## 2025-05-20 - Decouple High-Frequency Animation State from React Re-renders
+**Learning:** Invoking React state setters (`useState`) at 60fps inside animation frame loops (e.g. for rocket coordinates or websocket flight state) forces the entire component tree to re-render 60 times per second, causing heavy CPU usage and visual stuttering.
+**Action:** Use direct DOM element style mutation via `useRef` inside requestAnimationFrame callbacks for high-frequency updates, and use `useLayoutEffect` to preserve DOM styles immediately after React re-renders. Throttle top-level websocket state updates to ~10Hz while maintaining 60Hz ref values for sub-components.
