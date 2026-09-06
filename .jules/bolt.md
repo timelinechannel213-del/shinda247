@@ -1,0 +1,3 @@
+## 2025-03-30 - Throttle high-frequency React state updates in WebSocket socket hook
+**Learning:** Running `setGameState` at 60fps inside `requestAnimationFrame` during the rocket flight phase caused ~60 component re-renders per second across the entire application tree. Since `GameCanvas` renders via its own `requestAnimationFrame` loop, high-frequency React state updates in the parent hook were redundant and created heavy re-rendering overhead.
+**Action:** Throttle `setGameState` updates in `useGameSocket` to ~100ms (~10Hz) during flight. Keep high-frequency animation calculations in `requestAnimationFrame` refs (`elapsedRef`) so visual canvas updates stay 60fps while reducing React re-renders by ~83%.
