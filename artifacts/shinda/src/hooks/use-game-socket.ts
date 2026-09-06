@@ -46,14 +46,23 @@ export function useGameSocket(token: string | null) {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     flyStartRef.current = Date.now();
 
+    let lastUpdate = 0;
     const tick = () => {
-      const elapsed = Date.now() - (flyStartRef.current ?? Date.now());
+      const now = Date.now();
+      const elapsed = now - (flyStartRef.current ?? now);
       elapsedRef.current = elapsed;
-      setGameState(s => ({
-        ...s,
-        elapsedMs:  elapsed,
-        multiplier: elapsedToMultiplier(elapsed),
-      }));
+
+      // ⚡ Bolt: Throttle React setGameState updates to ~100ms (~10Hz) during flight.
+      // High-frequency 60fps canvas rendering reads flyStartRef directly, while
+      // throttling state updates reduces React re-renders across the component tree by ~83%.
+      if (now - lastUpdate >= 100) {
+        lastUpdate = now;
+        setGameState(s => ({
+          ...s,
+          elapsedMs:  elapsed,
+          multiplier: elapsedToMultiplier(elapsed),
+        }));
+      }
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);
