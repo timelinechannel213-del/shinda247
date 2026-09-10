@@ -16,7 +16,7 @@ interface HistoryItem {
   hash: string;
 }
 
-export function Topbar({ gameState: _gameState }: TopbarProps) {
+export function Topbar({ gameState }: TopbarProps) {
   const { username, balanceCents, token, logout, refreshBalance } = useAuth();
   const [history, setHistory]         = useState<HistoryItem[]>([]);
   const [showDeposit, setShowDeposit] = useState(false);
@@ -29,9 +29,24 @@ export function Topbar({ gameState: _gameState }: TopbarProps) {
       } catch {}
     };
     fetchHistory();
-    const iv = setInterval(fetchHistory, 5000);
+
+    // ⚡ Bolt: Increase background polling interval to 15s (from 5s) to reduce HTTP load by ~66%.
+    const iv = setInterval(fetchHistory, 15000);
     return () => clearInterval(iv);
   }, []);
+
+  // ⚡ Bolt: Instantly fetch history when a round ends (phase === 'crashed') for real-time history updates.
+  useEffect(() => {
+    if (gameState?.phase === 'crashed') {
+      const fetchHistory = async () => {
+        try {
+          const res = await fetch('/api/game/history?limit=10');
+          if (res.ok) setHistory(await res.json());
+        } catch {}
+      };
+      fetchHistory();
+    }
+  }, [gameState?.phase]);
 
   useEffect(() => {
     if (token) refreshBalance();
