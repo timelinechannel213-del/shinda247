@@ -46,14 +46,25 @@ export function useGameSocket(token: string | null) {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     flyStartRef.current = Date.now();
 
+    // ⚡ Bolt Optimization: Throttle React state updates during flight phase.
+    // Instead of calling setGameState at 60fps (which triggers re-renders across the app component tree),
+    // we update elapsedRef at 60fps for ref-based canvas/DOM animation, and throttle React state updates to ~100ms (10Hz).
+    // Impact: ~83% reduction in React state updates and component tree re-renders during flight.
+    let lastStateUpdate = 0;
+
     const tick = () => {
-      const elapsed = Date.now() - (flyStartRef.current ?? Date.now());
+      const now = Date.now();
+      const elapsed = now - (flyStartRef.current ?? now);
       elapsedRef.current = elapsed;
-      setGameState(s => ({
-        ...s,
-        elapsedMs:  elapsed,
-        multiplier: elapsedToMultiplier(elapsed),
-      }));
+
+      if (now - lastStateUpdate >= 100) {
+        lastStateUpdate = now;
+        setGameState(s => ({
+          ...s,
+          elapsedMs:  elapsed,
+          multiplier: elapsedToMultiplier(elapsed),
+        }));
+      }
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);
