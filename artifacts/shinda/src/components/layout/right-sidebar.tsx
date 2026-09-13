@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, memo } from 'react';
 import { Trophy, Shield } from 'lucide-react';
 import { formatCurrency, cn } from '@/lib/utils';
 
@@ -9,7 +9,8 @@ interface LeaderEntry {
   cashedOutAt: number | null;
 }
 
-export function RightSidebar() {
+// ⚡ Bolt Performance Optimization: Memoized to prevent re-rendering when high-frequency state updates occur in parent views (e.g. Home).
+export const RightSidebar = memo(function RightSidebar() {
   const [players, setPlayers] = useState<LeaderEntry[]>([]);
 
   useEffect(() => {
@@ -83,4 +84,4 @@ export function RightSidebar() {
       </div>
     </aside>
   );
-}
+});
