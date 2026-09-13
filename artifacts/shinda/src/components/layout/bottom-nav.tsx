@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Link, useLocation } from 'wouter';
 import { Home, Bell, History, Users, UserCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -10,7 +11,8 @@ const NAV_ITEMS = [
   { href: '/profile',       label: 'Profile', icon: UserCircle },
 ];
 
-export function BottomNav() {
+// ⚡ Bolt Performance Optimization: Memoized to prevent re-rendering when high-frequency state updates occur in parent views (e.g. Home).
+export const BottomNav = memo(function BottomNav() {
   const [location] = useLocation();
 
   return (
@@ -35,4 +37,4 @@ export function BottomNav() {
       </div>
     </nav>
   );
-}
+});
