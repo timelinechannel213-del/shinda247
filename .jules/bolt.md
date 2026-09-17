@@ -1,0 +1,3 @@
+## 2026-09-17 - Optimize Topbar polling and high-frequency re-renders
+**Learning:** Topbar components in real-time games that display game phase history can be re-rendered on every animation tick (60fps) if passed a high-frequency `gameState` object, even when they only depend on `gameState.phase`. Furthermore, fixed background polling (e.g. 5s) generates excessive network overhead during long flight phases when round history is static.
+**Action:** Wrap layout components like Topbar with `React.memo` using custom comparison functions targeting specific state fields (`phase`), increase background polling interval (e.g. to 15s), and trigger event-driven fetches on phase changes (`crashed`).

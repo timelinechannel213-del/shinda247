@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, memo } from 'react';
 import { Wallet, Plus, Zap, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { formatCurrency, cn } from '@/lib/utils';
@@ -16,22 +16,36 @@ interface HistoryItem {
   hash: string;
 }
 
-export function Topbar({ gameState: _gameState }: TopbarProps) {
+function TopbarComponent({ gameState }: TopbarProps) {
   const { username, balanceCents, token, logout, refreshBalance } = useAuth();
   const [history, setHistory]         = useState<HistoryItem[]>([]);
   const [showDeposit, setShowDeposit] = useState(false);
 
+  // Helper to fetch game round history
+  const fetchHistory = async () => {
+    try {
+      const res = await fetch('/api/game/history?limit=10');
+      if (res.ok) setHistory(await res.json());
+    } catch {}
+  };
+
+  // ⚡ Bolt Performance Optimization:
+  // Reduced polling interval from 5s to 15s to decrease background HTTP GET traffic by ~66%.
   useEffect(() => {
-    const fetchHistory = async () => {
-      try {
-        const res = await fetch('/api/game/history?limit=10');
-        if (res.ok) setHistory(await res.json());
-      } catch {}
-    };
     fetchHistory();
-    const iv = setInterval(fetchHistory, 5000);
+    const iv = setInterval(fetchHistory, 15000);
     return () => clearInterval(iv);
   }, []);
+
+  // ⚡ Bolt Performance Optimization:
+  // Immediately refresh history when a round crashes so newly finished multiplier appears instantly
+  // without waiting for the background polling timer.
+  const phase = gameState?.phase;
+  useEffect(() => {
+    if (phase === 'crashed') {
+      fetchHistory();
+    }
+  }, [phase]);
 
   useEffect(() => {
     if (token) refreshBalance();
@@ -117,3 +131,12 @@ export function Topbar({ gameState: _gameState }: TopbarProps) {
     </>
   );
 }
+
+// ⚡ Bolt Performance Optimization:
+// Wrap Topbar with React.memo using custom prop equality based on `gameState.phase`.
+// This prevents Topbar from re-rendering on high-frequency (60fps) `gameState.multiplier`/`elapsedMs` updates
+// during flight, eliminating unnecessary component tree re-renders.
+export const Topbar = memo(
+  TopbarComponent,
+  (prevProps, nextProps) => prevProps.gameState?.phase === nextProps.gameState?.phase
+);
