@@ -1,36 +1,23 @@
-import { useState, useEffect } from 'react';
+import React, { useMemo } from 'react';
 import { Trophy, Shield } from 'lucide-react';
 import { formatCurrency, cn } from '@/lib/utils';
+import type { ActiveBet } from '@/hooks/use-game-socket';
 
-interface LeaderEntry {
-  userId:      number;
-  username:    string;
-  amountCents: number;
-  cashedOutAt: number | null;
+interface RightSidebarProps {
+  activeBets?: ActiveBet[];
 }
 
-export function RightSidebar() {
-  const [players, setPlayers] = useState<LeaderEntry[]>([]);
-
-  useEffect(() => {
-    const fetchPlayers = async () => {
-      try {
-        const res = await fetch('/api/game/players');
-        if (res.ok) {
-          const data: LeaderEntry[] = await res.json();
-          const sorted = [...data].sort((a, b) => {
-            const aP = a.cashedOutAt != null ? a.amountCents * a.cashedOutAt / 100 : 0;
-            const bP = b.cashedOutAt != null ? b.amountCents * b.cashedOutAt / 100 : 0;
-            return bP - aP;
-          });
-          setPlayers(sorted);
-        }
-      } catch {}
-    };
-    fetchPlayers();
-    const iv = setInterval(fetchPlayers, 1500);
-    return () => clearInterval(iv);
-  }, []);
+export const RightSidebar = React.memo(function RightSidebar({ activeBets = [] }: RightSidebarProps) {
+  // ⚡ Bolt Performance Optimization:
+  // Derive leaderboard entries directly from WebSocket `activeBets` using `useMemo`.
+  // Eliminates continuous REST polling (/api/game/players every 1.5s -> 40 reqs/min).
+  const players = useMemo(() => {
+    return [...activeBets].sort((a, b) => {
+      const aP = a.cashedOutAt != null ? (a.amountCents * a.cashedOutAt) / 100 : 0;
+      const bP = b.cashedOutAt != null ? (b.amountCents * b.cashedOutAt) / 100 : 0;
+      return bP - aP;
+    });
+  }, [activeBets]);
 
   return (
     <aside className="w-80 h-full hidden xl:flex flex-col bg-card border-l border-border/50 z-20">
@@ -55,7 +42,7 @@ export function RightSidebar() {
           </div>
         )}
 
-        {players.map((player, i) => {
+        {players.map((player) => {
           const isCashedOut = player.cashedOutAt !== null;
           const mult        = isCashedOut ? (player.cashedOutAt! / 100) : null;
           return (
@@ -83,4 +70,4 @@ export function RightSidebar() {
       </div>
     </aside>
   );
-}
+});
