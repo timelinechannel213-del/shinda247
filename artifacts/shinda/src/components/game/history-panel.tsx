@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, memo } from 'react';
 import { cn } from '@/lib/utils';
 import { History, MessageSquare, UserPlus, TrendingUp, TrendingDown } from 'lucide-react';
 import { VerifyModal } from './verify-modal';
@@ -29,14 +29,16 @@ const tabs = [
   { id: 'refer',   label: 'Refer',     icon: UserPlus },
 ];
 
-export function HistoryPanel() {
+export const HistoryPanel = memo(function HistoryPanel() {
   const { token } = useAuth();
   const [activeTab, setActiveTab]     = useState('history');
   const [history, setHistory]         = useState<HistoryItem[]>([]);
   const [myBets, setMyBets]           = useState<MyBet[]>([]);
   const [verifyRound, setVerifyRound] = useState<HistoryItem | null>(null);
 
+  // ⚡ Bolt: Only poll game history when the History tab is active to eliminate background HTTP requests.
   useEffect(() => {
+    if (activeTab !== 'history') return;
     const fetchHistory = async () => {
       try {
         const res = await fetch('/api/game/history?limit=20');
@@ -44,9 +46,9 @@ export function HistoryPanel() {
       } catch {}
     };
     fetchHistory();
-    const iv = setInterval(fetchHistory, 8000);
+    const iv = setInterval(fetchHistory, 10000);
     return () => clearInterval(iv);
-  }, []);
+  }, [activeTab]);
 
   useEffect(() => {
     if (activeTab !== 'mybets' || !token) return;
@@ -63,13 +65,16 @@ export function HistoryPanel() {
     return () => clearInterval(iv);
   }, [activeTab, token]);
 
-  const betsStats = myBets.reduce(
-    (acc, b) => ({
-      totalBet:  acc.totalBet + b.amountCents,
-      totalWon:  acc.totalWon + (b.payoutCents ?? 0),
-    }),
-    { totalBet: 0, totalWon: 0 }
-  );
+  // ⚡ Bolt: Memoize stats calculation to avoid unnecessary array iterations and object allocations on re-renders.
+  const betsStats = useMemo(() => {
+    return myBets.reduce(
+      (acc, b) => ({
+        totalBet:  acc.totalBet + b.amountCents,
+        totalWon:  acc.totalWon + (b.payoutCents ?? 0),
+      }),
+      { totalBet: 0, totalWon: 0 }
+    );
+  }, [myBets]);
   const netPnl = betsStats.totalWon - betsStats.totalBet;
 
   return (
@@ -227,4 +232,4 @@ export function HistoryPanel() {
       <VerifyModal round={verifyRound} onClose={() => setVerifyRound(null)} />
     </>
   );
-}
+});
