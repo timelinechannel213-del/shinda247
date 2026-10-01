@@ -1,0 +1,3 @@
+## 2025-05-18 - Throttle high-frequency React state updates in real-time game socket hook
+**Learning:** In real-time animation hooks like `useGameSocket`, running a 60fps `requestAnimationFrame` loop that calls `setGameState` on every tick causes unnecessary re-renders across the entire React component tree. Sub-components (like canvas renderers) that animate at 60fps can consume `flyStartRef` or `elapsedRef` directly, allowing React state updates to be throttled to 10Hz (~100ms) without any loss in visual smoothness.
+**Action:** Always decouple 60fps RAF animations from React state management by storing high-frequency values in `useRef` and throttling `setState` calls to 100ms.
