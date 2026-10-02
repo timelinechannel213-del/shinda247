@@ -1,0 +1,3 @@
+## 2025-05-18 - Throttle React State Updates for High-Frequency Flight Animation
+**Learning:** Calling `setGameState` inside requestAnimationFrame at 60Hz causes React to re-render the entire component tree on every frame. Since components like `GameCanvas` use internal RAF loops and refs for smooth 60Hz rendering, React state updates only need to occur at ~10Hz (100ms) for UI text indicators.
+**Action:** Maintain 60Hz updates in `elapsedRef.current` for direct DOM/Canvas rendering, but throttle React state updates using timestamp thresholds (`now - lastUpdate >= 100`) to cut re-render overhead by ~83%.
