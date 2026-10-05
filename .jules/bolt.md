@@ -1,0 +1,3 @@
+## 2025-05-18 - Throttle React State Updates in RequestAnimationFrame Loops
+**Learning:** Calling React `setState` inside a `requestAnimationFrame` loop at 60Hz causes severe re-render overhead across the entire component tree. Sub-components like canvas or animation containers should rely on mutable refs (`elapsedRef`, `flyStartRef`) for 60fps frame rendering, allowing React state updates to be throttled to ~10Hz (~100ms) without compromising visual smoothness.
+**Action:** When working with high-frequency updates (e.g. timers, web sockets, animation loops), decouple rendering refs from React state and throttle `setState` invocations.
