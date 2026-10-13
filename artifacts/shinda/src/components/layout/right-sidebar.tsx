@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Trophy, Shield } from 'lucide-react';
 import { formatCurrency, cn } from '@/lib/utils';
+import type { ActiveBet } from '@/hooks/use-game-socket';
 
 interface LeaderEntry {
   userId:      number;
@@ -9,28 +10,40 @@ interface LeaderEntry {
   cashedOutAt: number | null;
 }
 
-export function RightSidebar() {
-  const [players, setPlayers] = useState<LeaderEntry[]>([]);
+interface RightSidebarProps {
+  activeBets?: ActiveBet[];
+}
 
+export const RightSidebar = React.memo(function RightSidebar({ activeBets }: RightSidebarProps) {
+  const [fallbackPlayers, setFallbackPlayers] = useState<LeaderEntry[]>([]);
+
+  // If activeBets from WebSocket is provided, derive leaderboard directly from WS state.
+  // Otherwise, fallback to polling REST API.
   useEffect(() => {
+    if (activeBets !== undefined) return;
+
     const fetchPlayers = async () => {
       try {
         const res = await fetch('/api/game/players');
         if (res.ok) {
           const data: LeaderEntry[] = await res.json();
-          const sorted = [...data].sort((a, b) => {
-            const aP = a.cashedOutAt != null ? a.amountCents * a.cashedOutAt / 100 : 0;
-            const bP = b.cashedOutAt != null ? b.amountCents * b.cashedOutAt / 100 : 0;
-            return bP - aP;
-          });
-          setPlayers(sorted);
+          setFallbackPlayers(data);
         }
       } catch {}
     };
     fetchPlayers();
     const iv = setInterval(fetchPlayers, 1500);
     return () => clearInterval(iv);
-  }, []);
+  }, [activeBets]);
+
+  const players = useMemo(() => {
+    const source: LeaderEntry[] = activeBets ?? fallbackPlayers;
+    return [...source].sort((a, b) => {
+      const aP = a.cashedOutAt != null ? (a.amountCents * a.cashedOutAt) / 100 : 0;
+      const bP = b.cashedOutAt != null ? (b.amountCents * b.cashedOutAt) / 100 : 0;
+      return bP - aP;
+    });
+  }, [activeBets, fallbackPlayers]);
 
   return (
     <aside className="w-80 h-full hidden xl:flex flex-col bg-card border-l border-border/50 z-20">
@@ -83,4 +96,4 @@ export function RightSidebar() {
       </div>
     </aside>
   );
-}
+});
