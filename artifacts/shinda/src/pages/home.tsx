@@ -16,7 +16,7 @@ interface WinFlash {
 
 export default function Home() {
   const { token } = useAuth();
-  const { gameState, activeBets, connected, send, countdown } = useGameSocket(token);
+  const { gameState, activeBets, connected, send, countdown, flyStartRef } = useGameSocket(token);
   const [winFlash, setWinFlash] = useState<WinFlash | null>(null);
 
   const handleWin = (flash: WinFlash) => {
@@ -40,6 +40,7 @@ export default function Home() {
               activeBets={activeBets}
               connected={connected}
               send={send}
+              flyStartRef={flyStartRef}
               onWin={handleWin}
             />
 

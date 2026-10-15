@@ -4,7 +4,7 @@ import { Input }    from '@/components/ui/input';
 import { Hash, Settings2, Wifi, WifiOff } from 'lucide-react';
 import { useAuth }  from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
-import type { GameState, ActiveBet } from '@/hooks/use-game-socket';
+import { elapsedToMultiplier, type GameState, type ActiveBet } from '@/hooks/use-game-socket';
 
 interface WinFlash {
   payoutCents: number;
@@ -12,14 +12,15 @@ interface WinFlash {
 }
 
 interface GameControlsProps {
-  gameState:   GameState;
-  activeBets:  ActiveBet[];
-  connected:   boolean;
-  send:        (type: string, data?: unknown) => void;
-  onWin?:      (flash: WinFlash) => void;
+  gameState:    GameState;
+  activeBets:   ActiveBet[];
+  connected:    boolean;
+  send:         (type: string, data?: unknown) => void;
+  flyStartRef?: React.RefObject<number | null>;
+  onWin?:       (flash: WinFlash) => void;
 }
 
-export function GameControls({ gameState, activeBets, connected, send, onWin }: GameControlsProps) {
+export function GameControls({ gameState, activeBets, connected, send, flyStartRef, onWin }: GameControlsProps) {
   const { token, userId, refreshBalance } = useAuth();
   const { toast } = useToast();
 
@@ -70,7 +71,10 @@ export function GameControls({ gameState, activeBets, connected, send, onWin }: 
 
   const handleCashOut = async () => {
     if (!token) return;
-    const cashoutMultiplier = multiplier;
+    // Calculate precise real-time multiplier using flyStartRef when available
+    const currentFlyStart = flyStartRef?.current;
+    const currentElapsed  = currentFlyStart ? Date.now() - currentFlyStart : gameState.elapsedMs;
+    const cashoutMultiplier = currentFlyStart ? elapsedToMultiplier(currentElapsed) : multiplier;
     setPending(true);
     try {
       const res  = await fetch('/api/game/cashout', {
