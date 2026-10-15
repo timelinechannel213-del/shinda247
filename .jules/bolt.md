@@ -1,0 +1,3 @@
+## 2025-05-18 - Throttling React state updates in high-frequency game socket ticker
+**Learning:** Calling `setGameState` at 60Hz inside `useGameSocket`'s `requestAnimationFrame` loop caused unnecessary component tree re-renders across the app, degrading frame rates and increasing CPU usage. Throttling `setGameState` to ~100ms while using refs (`flyStartRef`/`elapsedRef`) for high-frequency canvas drawing eliminates ~83% of React re-renders while preserving 60FPS visual animations.
+**Action:** Always decouple animation rendering from React state using refs (`useRef`) and throttle state setter calls when high-frequency WebSocket or RAF loops are involved.
