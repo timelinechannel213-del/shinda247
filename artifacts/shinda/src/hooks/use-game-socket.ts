@@ -37,23 +37,32 @@ export function useGameSocket(token: string | null) {
   const wsRef             = useRef<WebSocket | null>(null);
   const rafRef            = useRef<number | null>(null);
   const flyStartRef       = useRef<number | null>(null);
-  const countdownRef      = useRef<ReturnType<typeof setInterval> | null>(null);
-  const bettingEndsAtRef  = useRef<number | null>(null);
+  const countdownRef       = useRef<ReturnType<typeof setInterval> | null>(null);
+  const bettingEndsAtRef   = useRef<number | null>(null);
   // Stable ref so canvas can read multiplier without re-subscribing
-  const elapsedRef        = useRef<number>(0);
+  const elapsedRef         = useRef<number>(0);
+  const lastStateUpdateRef = useRef<number>(0);
 
   const startTicker = useCallback(() => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     flyStartRef.current = Date.now();
+    lastStateUpdateRef.current = Date.now();
 
     const tick = () => {
-      const elapsed = Date.now() - (flyStartRef.current ?? Date.now());
+      const now = Date.now();
+      const elapsed = now - (flyStartRef.current ?? now);
       elapsedRef.current = elapsed;
-      setGameState(s => ({
-        ...s,
-        elapsedMs:  elapsed,
-        multiplier: elapsedToMultiplier(elapsed),
-      }));
+
+      // Throttle React state updates during flight to ~100ms (~10Hz) to prevent re-render overhead (~83% reduction)
+      if (now - lastStateUpdateRef.current >= 100) {
+        lastStateUpdateRef.current = now;
+        setGameState(s => ({
+          ...s,
+          elapsedMs:  elapsed,
+          multiplier: elapsedToMultiplier(elapsed),
+        }));
+      }
+
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);
