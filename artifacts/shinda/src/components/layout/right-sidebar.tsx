@@ -1,36 +1,23 @@
-import { useState, useEffect } from 'react';
+import { useMemo } from 'react';
 import { Trophy, Shield } from 'lucide-react';
 import { formatCurrency, cn } from '@/lib/utils';
+import type { ActiveBet } from '@/hooks/use-game-socket';
 
-interface LeaderEntry {
-  userId:      number;
-  username:    string;
-  amountCents: number;
-  cashedOutAt: number | null;
+interface RightSidebarProps {
+  activeBets?: ActiveBet[];
 }
 
-export function RightSidebar() {
-  const [players, setPlayers] = useState<LeaderEntry[]>([]);
-
-  useEffect(() => {
-    const fetchPlayers = async () => {
-      try {
-        const res = await fetch('/api/game/players');
-        if (res.ok) {
-          const data: LeaderEntry[] = await res.json();
-          const sorted = [...data].sort((a, b) => {
-            const aP = a.cashedOutAt != null ? a.amountCents * a.cashedOutAt / 100 : 0;
-            const bP = b.cashedOutAt != null ? b.amountCents * b.cashedOutAt / 100 : 0;
-            return bP - aP;
-          });
-          setPlayers(sorted);
-        }
-      } catch {}
-    };
-    fetchPlayers();
-    const iv = setInterval(fetchPlayers, 1500);
-    return () => clearInterval(iv);
-  }, []);
+export function RightSidebar({ activeBets = [] }: RightSidebarProps) {
+  // ⚡ Bolt: Derive leaderboard entries directly from activeBets WebSocket state
+  // using useMemo instead of continuously polling REST API endpoint every 1.5s
+  // (Saves ~40 HTTP requests/min and eliminates network lag on bet/cashout updates)
+  const players = useMemo(() => {
+    return [...activeBets].sort((a, b) => {
+      const aP = a.cashedOutAt != null ? (a.amountCents * a.cashedOutAt) / 100 : 0;
+      const bP = b.cashedOutAt != null ? (b.amountCents * b.cashedOutAt) / 100 : 0;
+      return bP - aP;
+    });
+  }, [activeBets]);
 
   return (
     <aside className="w-80 h-full hidden xl:flex flex-col bg-card border-l border-border/50 z-20">
@@ -55,9 +42,9 @@ export function RightSidebar() {
           </div>
         )}
 
-        {players.map((player, i) => {
+        {players.map((player) => {
           const isCashedOut = player.cashedOutAt !== null;
-          const mult        = isCashedOut ? (player.cashedOutAt! / 100) : null;
+          const mult        = isCashedOut ? player.cashedOutAt! / 100 : null;
           return (
             <div
               key={player.userId}
@@ -70,7 +57,12 @@ export function RightSidebar() {
                 <span className="font-medium text-sm truncate">{player.username}</span>
               </div>
 
-              <div className={cn('w-16 text-right font-mono text-sm font-bold', isCashedOut ? 'text-success' : 'text-muted-foreground')}>
+              <div
+                className={cn(
+                  'w-16 text-right font-mono text-sm font-bold',
+                  isCashedOut ? 'text-success' : 'text-muted-foreground'
+                )}
+              >
                 {mult != null ? `${mult.toFixed(2)}x` : '—'}
               </div>
 
