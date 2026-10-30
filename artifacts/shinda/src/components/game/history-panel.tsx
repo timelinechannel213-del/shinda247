@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { cn } from '@/lib/utils';
 import { History, MessageSquare, UserPlus, TrendingUp, TrendingDown } from 'lucide-react';
 import { VerifyModal } from './verify-modal';
@@ -36,7 +36,9 @@ export function HistoryPanel() {
   const [myBets, setMyBets]           = useState<MyBet[]>([]);
   const [verifyRound, setVerifyRound] = useState<HistoryItem | null>(null);
 
+  // ⚡ Bolt: Pause history polling when history tab is not active to reduce unnecessary network requests
   useEffect(() => {
+    if (activeTab !== 'history') return;
     const fetchHistory = async () => {
       try {
         const res = await fetch('/api/game/history?limit=20');
@@ -46,7 +48,7 @@ export function HistoryPanel() {
     fetchHistory();
     const iv = setInterval(fetchHistory, 8000);
     return () => clearInterval(iv);
-  }, []);
+  }, [activeTab]);
 
   useEffect(() => {
     if (activeTab !== 'mybets' || !token) return;
@@ -63,12 +65,17 @@ export function HistoryPanel() {
     return () => clearInterval(iv);
   }, [activeTab, token]);
 
-  const betsStats = myBets.reduce(
-    (acc, b) => ({
-      totalBet:  acc.totalBet + b.amountCents,
-      totalWon:  acc.totalWon + (b.payoutCents ?? 0),
-    }),
-    { totalBet: 0, totalWon: 0 }
+  // ⚡ Bolt: Memoize bets aggregate calculation to prevent recalculating on unrelated renders
+  const betsStats = useMemo(
+    () =>
+      myBets.reduce(
+        (acc, b) => ({
+          totalBet: acc.totalBet + b.amountCents,
+          totalWon: acc.totalWon + (b.payoutCents ?? 0),
+        }),
+        { totalBet: 0, totalWon: 0 }
+      ),
+    [myBets]
   );
   const netPnl = betsStats.totalWon - betsStats.totalBet;
 
