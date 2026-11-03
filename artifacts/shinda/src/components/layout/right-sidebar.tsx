@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Trophy, Shield } from 'lucide-react';
 import { formatCurrency, cn } from '@/lib/utils';
+import type { ActiveBet } from '@/hooks/use-game-socket';
 
 interface LeaderEntry {
   userId:      number;
@@ -9,28 +10,47 @@ interface LeaderEntry {
   cashedOutAt: number | null;
 }
 
-export function RightSidebar() {
-  const [players, setPlayers] = useState<LeaderEntry[]>([]);
+interface RightSidebarProps {
+  activeBets?: ActiveBet[];
+}
+
+export function RightSidebar({ activeBets }: RightSidebarProps) {
+  // ⚡ Bolt Optimization: Use real-time activeBets passed from WebSocket connection.
+  // When activeBets are provided via WebSocket events (1507/1505/1501), derive the leaderboard
+  // directly using useMemo instead of continuous 1.5s REST polling.
+  // This eliminates ~40 HTTP requests/minute and prevents network overhead while keeping UI in sync.
+  const [fallbackPlayers, setFallbackPlayers] = useState<LeaderEntry[]>([]);
 
   useEffect(() => {
+    // Only poll as fallback if activeBets prop is not supplied
+    if (activeBets !== undefined) return;
+
+    let isMounted = true;
     const fetchPlayers = async () => {
       try {
         const res = await fetch('/api/game/players');
-        if (res.ok) {
+        if (res.ok && isMounted) {
           const data: LeaderEntry[] = await res.json();
-          const sorted = [...data].sort((a, b) => {
-            const aP = a.cashedOutAt != null ? a.amountCents * a.cashedOutAt / 100 : 0;
-            const bP = b.cashedOutAt != null ? b.amountCents * b.cashedOutAt / 100 : 0;
-            return bP - aP;
-          });
-          setPlayers(sorted);
+          setFallbackPlayers(data);
         }
       } catch {}
     };
     fetchPlayers();
-    const iv = setInterval(fetchPlayers, 1500);
-    return () => clearInterval(iv);
-  }, []);
+    const iv = setInterval(fetchPlayers, 3000);
+    return () => {
+      isMounted = false;
+      clearInterval(iv);
+    };
+  }, [activeBets]);
+
+  const players = useMemo(() => {
+    const source = activeBets ?? fallbackPlayers;
+    return [...source].sort((a, b) => {
+      const aP = a.cashedOutAt != null ? (a.amountCents * a.cashedOutAt) / 100 : 0;
+      const bP = b.cashedOutAt != null ? (b.amountCents * b.cashedOutAt) / 100 : 0;
+      return bP - aP;
+    });
+  }, [activeBets, fallbackPlayers]);
 
   return (
     <aside className="w-80 h-full hidden xl:flex flex-col bg-card border-l border-border/50 z-20">
@@ -55,7 +75,7 @@ export function RightSidebar() {
           </div>
         )}
 
-        {players.map((player, i) => {
+        {players.map((player) => {
           const isCashedOut = player.cashedOutAt !== null;
           const mult        = isCashedOut ? (player.cashedOutAt! / 100) : null;
           return (
