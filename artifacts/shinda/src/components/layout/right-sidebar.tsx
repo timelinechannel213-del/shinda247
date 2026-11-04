@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Trophy, Shield } from 'lucide-react';
 import { formatCurrency, cn } from '@/lib/utils';
+import type { ActiveBet } from '@/hooks/use-game-socket';
 
 interface LeaderEntry {
   userId:      number;
@@ -9,10 +10,31 @@ interface LeaderEntry {
   cashedOutAt: number | null;
 }
 
-export function RightSidebar() {
-  const [players, setPlayers] = useState<LeaderEntry[]>([]);
+interface RightSidebarProps {
+  activeBets?: ActiveBet[];
+}
+
+export function RightSidebar({ activeBets }: RightSidebarProps) {
+  const [polledPlayers, setPolledPlayers] = useState<LeaderEntry[]>([]);
+
+  // ⚡ Bolt Optimization:
+  // If activeBets is provided via WebSocket from useGameSocket, derive and sort the leaderboard
+  // in-memory using useMemo. This completely eliminates 40 HTTP requests/min from the 1.5s REST polling loop.
+  const players = useMemo(() => {
+    if (activeBets) {
+      return [...activeBets].sort((a, b) => {
+        const aP = a.cashedOutAt != null ? (a.amountCents * a.cashedOutAt) / 100 : 0;
+        const bP = b.cashedOutAt != null ? (b.amountCents * b.cashedOutAt) / 100 : 0;
+        return bP - aP;
+      });
+    }
+    return polledPlayers;
+  }, [activeBets, polledPlayers]);
 
   useEffect(() => {
+    // Only poll when activeBets is not provided via WebSocket
+    if (activeBets !== undefined) return;
+
     const fetchPlayers = async () => {
       try {
         const res = await fetch('/api/game/players');
@@ -23,14 +45,14 @@ export function RightSidebar() {
             const bP = b.cashedOutAt != null ? b.amountCents * b.cashedOutAt / 100 : 0;
             return bP - aP;
           });
-          setPlayers(sorted);
+          setPolledPlayers(sorted);
         }
       } catch {}
     };
     fetchPlayers();
     const iv = setInterval(fetchPlayers, 1500);
     return () => clearInterval(iv);
-  }, []);
+  }, [activeBets]);
 
   return (
     <aside className="w-80 h-full hidden xl:flex flex-col bg-card border-l border-border/50 z-20">
