@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Trophy, Shield } from 'lucide-react';
 import { formatCurrency, cn } from '@/lib/utils';
+import type { ActiveBet } from '@/hooks/use-game-socket';
 
 interface LeaderEntry {
   userId:      number;
@@ -9,10 +10,31 @@ interface LeaderEntry {
   cashedOutAt: number | null;
 }
 
-export function RightSidebar() {
-  const [players, setPlayers] = useState<LeaderEntry[]>([]);
+interface RightSidebarProps {
+  activeBets?: ActiveBet[];
+}
+
+export function RightSidebar({ activeBets }: RightSidebarProps) {
+  const [polledPlayers, setPolledPlayers] = useState<LeaderEntry[]>([]);
+
+  // ⚡ Bolt: Derive sorted leaderboard from WebSocket activeBets when available.
+  // This eliminates ~40 HTTP requests/minute (1.5s interval polling) to /api/game/players
+  // while keeping leaderboard entries updated in real time.
+  const players = useMemo(() => {
+    if (activeBets) {
+      return [...activeBets].sort((a, b) => {
+        const aP = a.cashedOutAt != null ? (a.amountCents * a.cashedOutAt) / 100 : 0;
+        const bP = b.cashedOutAt != null ? (b.amountCents * b.cashedOutAt) / 100 : 0;
+        return bP - aP;
+      });
+    }
+    return polledPlayers;
+  }, [activeBets, polledPlayers]);
 
   useEffect(() => {
+    // If activeBets is supplied via WebSocket, bypass the 1.5s polling loop entirely
+    if (activeBets !== undefined) return;
+
     const fetchPlayers = async () => {
       try {
         const res = await fetch('/api/game/players');
@@ -23,14 +45,14 @@ export function RightSidebar() {
             const bP = b.cashedOutAt != null ? b.amountCents * b.cashedOutAt / 100 : 0;
             return bP - aP;
           });
-          setPlayers(sorted);
+          setPolledPlayers(sorted);
         }
       } catch {}
     };
     fetchPlayers();
     const iv = setInterval(fetchPlayers, 1500);
     return () => clearInterval(iv);
-  }, []);
+  }, [activeBets]);
 
   return (
     <aside className="w-80 h-full hidden xl:flex flex-col bg-card border-l border-border/50 z-20">
