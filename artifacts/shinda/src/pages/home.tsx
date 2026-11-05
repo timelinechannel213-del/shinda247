@@ -48,7 +48,8 @@ export default function Home() {
         </main>
       </div>
 
-      <RightSidebar />
+      {/* Bolt: pass activeBets from WebSocket to RightSidebar to avoid 1.5s REST polling */}
+      <RightSidebar activeBets={activeBets} />
       <BottomNav />
     </div>
   );
