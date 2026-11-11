@@ -4,12 +4,16 @@ import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { AuthProvider, useAuth } from '@/contexts/AuthContext';
 import { AuthModal } from '@/components/auth/auth-modal';
+import { lazy, Suspense } from 'react';
 import Home from '@/pages/home';
-import HistoryPage from '@/pages/history';
-import PlayersPage from '@/pages/players';
-import NotificationsPage from '@/pages/notifications';
-import ProfilePage from '@/pages/profile';
-import NotFound from '@/pages/not-found';
+
+// Bolt: Route-level code splitting using React.lazy to reduce initial bundle size
+// Secondary routes and their heavy UI dependencies are loaded on demand.
+const HistoryPage = lazy(() => import('@/pages/history'));
+const PlayersPage = lazy(() => import('@/pages/players'));
+const NotificationsPage = lazy(() => import('@/pages/notifications'));
+const ProfilePage = lazy(() => import('@/pages/profile'));
+const NotFound = lazy(() => import('@/pages/not-found'));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -36,14 +40,22 @@ function AppRoutes() {
   }
 
   return (
-    <Switch>
-      <Route path="/" component={Home} />
-      <Route path="/history" component={HistoryPage} />
-      <Route path="/players" component={PlayersPage} />
-      <Route path="/notifications" component={NotificationsPage} />
-      <Route path="/profile" component={ProfilePage} />
-      <Route component={NotFound} />
-    </Switch>
+    <Suspense
+      fallback={
+        <div className="flex h-screen items-center justify-center bg-background">
+          <div className="text-muted-foreground text-sm animate-pulse">Loading...</div>
+        </div>
+      }
+    >
+      <Switch>
+        <Route path="/" component={Home} />
+        <Route path="/history" component={HistoryPage} />
+        <Route path="/players" component={PlayersPage} />
+        <Route path="/notifications" component={NotificationsPage} />
+        <Route path="/profile" component={ProfilePage} />
+        <Route component={NotFound} />
+      </Switch>
+    </Suspense>
   );
 }
 
